@@ -10,7 +10,9 @@ the host PBX configuration. All generated files live in a temporary directory.
 
 import os
 import pathlib
+import math
 import shutil
+import struct
 import subprocess
 import tempfile
 import time
@@ -38,7 +40,17 @@ def main():
             audio.setnchannels(1)
             audio.setsampwidth(2)
             audio.setframerate(8000)
-            audio.writeframes(b"\0\0" * 16000)
+            samples = (int(8000 * math.sin(2 * math.pi * 440 * i / 8000)) for i in range(16000))
+            audio.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
+        capture = root / "receiver.wav"
+        mic_recording = root / "data/sounds/en/microphone.wav"
+        with wave.open(str(mic_recording), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(8000)
+            samples = (int(8000 * math.sin(2 * math.pi * 440 * i / 8000)) for i in range(48000))
+            audio.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
+        mute_capture = root / "mute-receiver.wav"
         config = root / "asterisk.conf"
         config.write_text(
             "[directories]\n"
@@ -69,20 +81,28 @@ def main():
             "load=app_confbridge.so\n"
             "load=app_waitforring.so\n"
             "load=app_playback.so\n"
+            "load=app_mixmonitor.so\n"
             "load=format_wav.so\n"
         )
         (root / "etc/confbridge.conf").write_text(
             "[test_bridge]\ntype=bridge\n"
             "[test_user]\ntype=user\nquiet=yes\n"
+            "[test_sender]\ntype=user\nquiet=yes\nstartmuted=yes\n"
         )
         (root / "etc/extensions.conf").write_text(
             "[general]\nstatic=yes\nwriteprotect=yes\n"
             "[advancedpaging-lab]\n"
-            "exten => receiver,1,ConfBridge(aplab,test_bridge,test_user)\n"
+            f"exten => receiver,1,MixMonitor({capture})\n"
+            " same => n,ConfBridge(aplab,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             "exten => initiator,1,ConfBridge(aplab,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             "exten => injector,1,ConfBridge(aplab,test_bridge,test_user)\n"
+            " same => n,Hangup()\n"
+            f"exten => listener,1,MixMonitor({mute_capture})\n"
+            " same => n,ConfBridge(mutelab,test_bridge,test_user)\n"
+            " same => n,Hangup()\n"
+            "exten => microphone,1,ConfBridge(mutelab,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
         )
         log = (root / "server.log").open("w+")
@@ -183,6 +203,54 @@ def main():
             else:
                 raise RuntimeError("Receiver was not kicked: " + result + remaining)
             print("Receiver disconnected after playback completion.")
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if capture.is_file() and capture.stat().st_size > 44:
+                    try:
+                        with wave.open(str(capture), "rb") as captured:
+                            frames = captured.readframes(captured.getnframes())
+                        values = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+                        tone_samples = sum(1 for sample in values if abs(sample) > 1000)
+                        # The two-second, 8 kHz tone has about 14,600 samples
+                        # above this threshold. Reject substantial truncation.
+                        if tone_samples > 14000:
+                            break
+                    except (EOFError, wave.Error):
+                        pass
+                time.sleep(0.1)
+            else:
+                raise RuntimeError("Receiver capture did not contain the expected tone.")
+            print(f"Receiver capture contained {tone_samples} audible-amplitude samples.")
+
+            cli("channel originate Local/listener@advancedpaging-lab application Wait 20")
+            deadline = time.monotonic() + 5
+            while "Local/listener@" not in cli("confbridge list mutelab"):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Mute-test listener did not join.")
+                time.sleep(0.1)
+            cli("channel originate Local/microphone@advancedpaging-lab application Playback microphone")
+            deadline = time.monotonic() + 5
+            while "Local/microphone@" not in cli("confbridge list mutelab"):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Mute-test sender did not join.")
+                time.sleep(0.1)
+            time.sleep(1.5)
+            cli("confbridge unmute mutelab Local/microphone@advancedpaging-lab")
+            time.sleep(1.5)
+            cli("confbridge mute mutelab Local/microphone@advancedpaging-lab")
+            time.sleep(1.5)
+            cli("confbridge kick mutelab all")
+            time.sleep(0.5)
+            with wave.open(str(mute_capture), "rb") as recorded:
+                frames = recorded.readframes(recorded.getnframes())
+            values = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+            if len(values) < 24000:
+                raise RuntimeError("Mute-test audio capture is too short.")
+            level = lambda data: sum(1 for sample in data if abs(sample) > 1000)
+            beginning, middle, end = level(values[:8000]), level(values[8000:-8000]), level(values[-8000:])
+            if beginning > 100 or middle < 3000 or end > 100:
+                raise RuntimeError(f"Unexpected muted/unmuted audio: {beginning}, {middle}, {end}.")
+            print(f"Muted/unmuted/muted receiver samples: {beginning}, {middle}, {end}.")
         finally:
             if process.poll() is None:
                 process.terminate()

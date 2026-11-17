@@ -32,9 +32,10 @@ python3 tests/isolated_asterisk.py
 
 It starts a second Asterisk process with temporary configuration and its own
 socket, using only Local channels, and tears it down afterwards. It exercises
-receiver survival after initiator hangup and a timed Playback injector followed
-by a kick. It does **not** verify received audio, mute behavior, automatic
-call control, PJSIP, or the production module. On `eich-pbx` the installed
+receiver survival after initiator hangup, captured playback audio, a timed
+Playback injector followed by a kick, and ConfBridge mute/unmute using a
+simulated microphone and a receiver capture. It does **not** verify automatic
+production call control, PJSIP, or the module. On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 
 ## Platform investigation
