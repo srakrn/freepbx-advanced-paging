@@ -1,9 +1,8 @@
 # Advanced Paging for FreePBX 17
 
-**Current release: 17.0.0alpha5** — an unsigned alpha module for FreePBX 17
-and Asterisk 22. It has been installed through the FreePBX module manager and
-smoke-tested with its systemd runtime. It is not Sangoma-certified. Review the
-known platform and handset limitations below before using it.
+**Current release: 17.0.0alpha6** — an unsigned alpha module for FreePBX 17
+and Asterisk 22. It is not Sangoma-certified. Review the known platform and
+handset limitations below before using it.
 
 ## Features
 
@@ -15,13 +14,16 @@ known platform and handset limitations below before using it.
   Alert-Info parameter.
 - Choose Skip, Force, or Whisper behavior for busy extensions. Whisper uses
   ChanSpy whisper mode on busy PJSIP channels; endpoint support varies.
+- Configure global **Drop Silence**, enabled by default to match FreePBX
+  Paging. Asterisk discards audio it detects as silence before it enters the
+  paging conference.
 - Preserve caller ID on receiver calls.
 - Serialize call events, prevent simultaneous calls to the same group, and
   reconcile module-owned channels after runtime restarts.
 - Back up and restore group configuration without including runtime secrets.
 
 See the [installation and acceptance guide](docs/INSTALL.md) and the
-[17.0.0alpha5 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0alpha5).
+[17.0.0alpha6 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0alpha6).
 
 ## Compatibility and limitations
 
@@ -43,7 +45,7 @@ Download and verify the release archive and follow
 [`docs/INSTALL.md`](docs/INSTALL.md):
 
 ```sh
-VERSION=17.0.0alpha5
+VERSION=17.0.0alpha6
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz"
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz.sha256"
 sha256sum -c "advancedpaging-${VERSION}.tar.gz.sha256"

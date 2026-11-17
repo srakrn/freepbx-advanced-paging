@@ -46,6 +46,9 @@ try {
             throw new RuntimeException('Install hook did not migrate ' . $column . '.');
         }
     }
+    if (!in_array('advancedpaging_settings', $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN), true)) {
+        throw new RuntimeException('Install hook did not create the module settings table.');
+    }
     if ($GLOBALS['reloads'] !== 1) {
         throw new RuntimeException('Install hook did not request configuration reload.');
     }

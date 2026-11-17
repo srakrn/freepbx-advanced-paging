@@ -49,7 +49,7 @@ final class AmiOrigination
      * Only internal endpoints are accepted. Local channels are allowed solely
      * for isolated tests; callers must never pass untrusted dial strings.
      */
-    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false, array $callerId = []): void
+    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false, array $callerId = [], bool $dropSilence = true): void
     {
         if ($this->submitted || !preg_match('/^ap-[a-f0-9]{32}$/D', $conference)
             || $timeoutMs < 1000 || $timeoutMs > 60000) {
@@ -75,6 +75,7 @@ final class AmiOrigination
             'OtherChannelId' => $this->peerId,
             'Variable' => ['__AP_CONF=' . $conference, '__AP_ORIGINATION_ID=' . $this->id],
         ];
+        $headers['Variable'][] = '__CONFBRIDGE(user,dsp_drop_silence)=' . ($dropSilence ? 'yes' : 'no');
         if ($callerId) {
             $number = $callerId['number'] ?? '';
             $name = $callerId['name'] ?? '';

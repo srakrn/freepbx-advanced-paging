@@ -44,7 +44,7 @@ final class AdminPage
                 return ['status' => 403, 'html' => $this->alert('Your session token is invalid. Reload the page and try again.', 'danger')];
             }
             $action = $post['action'] ?? '';
-            if (!is_string($action) || !in_array($action, ['save', 'delete'], true)) {
+            if (!is_string($action) || !in_array($action, ['save', 'delete', 'save_settings'], true)) {
                 return ['status' => 400, 'html' => $this->alert('Invalid request.', 'danger')];
             }
             $id = null;
@@ -55,7 +55,15 @@ final class AdminPage
                 }
             }
             try {
-                if ($action === 'delete') {
+                if ($action === 'save_settings') {
+                    $dropSilence = $post['drop_silence'] ?? null;
+                    if (!is_string($dropSilence) || !in_array($dropSilence, ['0', '1'], true)) {
+                        throw new InvalidArgumentException('Select Yes or No for Drop Silence.');
+                    }
+                    $this->module->setDropSilence($dropSilence);
+                    needreload();
+                    $notice = 'Settings saved. Apply configuration to activate changes.';
+                } elseif ($action === 'delete') {
                     if ($id === null || !$this->module->deleteGroup($id)) {
                         throw new InvalidArgumentException('Group does not exist.');
                     }
@@ -78,17 +86,17 @@ final class AdminPage
                 }
                 $session['advancedpaging_csrf'] = bin2hex(random_bytes(32));
                 $token = $session['advancedpaging_csrf'];
-                $view = '';
+                $view = $action === 'save_settings' ? 'settings' : '';
                 $id = null;
             } catch (InvalidArgumentException $exception) {
                 $error = $exception->getMessage();
-                $view = $action === 'save' ? 'edit' : '';
+                $view = $action === 'save' ? 'edit' : ($action === 'save_settings' ? 'settings' : '');
             } catch (PDOException $exception) {
                 $error = 'The group could not be saved. Check for a duplicate extension and try again.';
-                $view = $action === 'save' ? 'edit' : '';
+                $view = $action === 'save' ? 'edit' : ($action === 'save_settings' ? 'settings' : '');
             } catch (Throwable $exception) {
                 $error = 'The request could not be completed. Check the FreePBX logs.';
-                $view = $action === 'save' ? 'edit' : '';
+                $view = $action === 'save' ? 'edit' : ($action === 'save_settings' ? 'settings' : '');
             }
         } elseif ($method !== 'GET') {
             return ['status' => 405, 'html' => $this->alert('Unsupported request method.', 'danger')];
@@ -100,7 +108,9 @@ final class AdminPage
         if ($error !== '') {
             $html .= $this->alert($error, 'danger');
         }
-        if ($view === 'edit' || $view === 'add') {
+        if ($view === 'settings') {
+            $html .= $this->settings($token);
+        } elseif ($view === 'edit' || $view === 'add') {
             $group = $id !== null ? $this->module->getGroup($id) : null;
             if ($id !== null && $group === null) {
                 return ['status' => 404, 'html' => $html . $this->alert('Group does not exist.', 'danger') . '</div>'];
@@ -127,7 +137,8 @@ final class AdminPage
 
     private function listing(string $token): string
     {
-        $html = '<p><a class="btn btn-primary" href="?display=advancedpaging&amp;view=add">Add Group</a></p>';
+        $html = '<p><a class="btn btn-primary" href="?display=advancedpaging&amp;view=add">Add Group</a> '
+            . '<a class="btn btn-default" href="?display=advancedpaging&amp;view=settings">Settings</a></p>';
         $html .= '<div class="table-responsive"><table class="table table-striped"><thead><tr>'
             . '<th>Name</th><th>Extension</th><th>Audio mode</th><th>Members</th><th>Status</th><th>Actions</th>'
             . '</tr></thead><tbody>';
@@ -144,6 +155,19 @@ final class AdminPage
                 . '</td></tr>';
         }
         return $html . '</tbody></table></div>';
+    }
+
+    private function settings(string $token): string
+    {
+        $selected = $this->module->getDropSilence() ? '1' : '0';
+        $html = '<p><a class="btn btn-default" href="?display=advancedpaging">Back to groups</a></p>'
+            . '<h2>Paging Settings</h2><form method="post" action="?display=advancedpaging" class="form-horizontal">'
+            . $this->hidden('csrf', $token) . $this->hidden('action', 'save_settings')
+            . $this->field('Drop Silence', $this->select('drop_silence', ['1' => 'Yes', '0' => 'No'], $selected))
+            . '<p class="help-block">Drops audio that Asterisk detects as silence before it enters the paging conference. '
+            . 'This can reduce background noise and conference processing, especially with larger groups.</p>'
+            . '<p><button type="submit" class="btn btn-primary">Save</button></p></form>';
+        return $html;
     }
 
     private function editor(array $group, ?int $id, string $token): string

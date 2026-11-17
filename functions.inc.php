@@ -13,8 +13,10 @@ function advancedpaging_get_config($engine)
         return;
     }
     global $ext;
+    $dropSilence = true;
     if (class_exists('\\FreePBX')) {
         $module = \FreePBX::Advancedpaging();
+        $dropSilence = $module->getDropSilence();
         $groups = $module->listGroups();
         foreach ($groups as &$group) {
             $id = $group['instruction_recording_id'] ?? null;
@@ -22,11 +24,12 @@ function advancedpaging_get_config($engine)
                 ? '' : $module->getRecordingSoundList((string) $id);
         }
         unset($group);
-        advancedpaging_generate_group_routes($groups);
+        advancedpaging_generate_group_routes($groups, $dropSilence);
     }
 
     $context = 'advancedpaging-receiver';
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
+    $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,dsp_drop_silence)', $dropSilence ? 'yes' : 'no'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,startmuted)', 'yes'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,announce_join_leave)', 'no'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,announce_user_count)', 'no'));
@@ -41,6 +44,7 @@ function advancedpaging_get_config($engine)
 
     $context = 'advancedpaging-inject';
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
+    $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,dsp_drop_silence)', $dropSilence ? 'yes' : 'no'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,startmuted)', 'no'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,announce_join_leave)', 'no'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,announce_user_count)', 'no'));
@@ -67,7 +71,7 @@ function advancedpaging_get_config($engine)
  * Generate enabled group routes. The admission watchdog fails closed when the
  * runtime is unavailable, so a caller cannot remain in an unattended bridge.
  */
-function advancedpaging_generate_group_routes(array $groups)
+function advancedpaging_generate_group_routes(array $groups, bool $dropSilence = true)
 {
     global $ext;
     $enabled = [];
@@ -105,6 +109,7 @@ function advancedpaging_generate_group_routes(array $groups)
             $ext->add($context, $id, '', new ext_playback($instruction));
         }
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,dsp_drop_silence)', $dropSilence ? 'yes' : 'no'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,startmuted)', 'yes'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_join_leave)', 'no'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_user_count)', 'no'));

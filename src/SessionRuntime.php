@@ -49,7 +49,8 @@ final class SessionRuntime
         bool $allowLocalForTests = false,
         ?GroupLock $reservation = null,
         ?callable $sessionRecordingResolver = null,
-        array $callerIdentity = []
+        array $callerIdentity = [],
+        bool $dropSilence = true
     ): ?string {
         if ($setupSeconds < 1 || $setupSeconds > 60 || !$targets) {
             throw new InvalidArgumentException('Invalid receiver setup.');
@@ -104,7 +105,8 @@ final class SessionRuntime
                     $allowLocalForTests,
                     $targetAutoAnswer,
                     is_array($target) && !empty($target['whisper']),
-                    $callerIdentity
+                    $callerIdentity,
+                    $dropSilence
                 );
             }
             return $sessionId;

@@ -31,6 +31,7 @@ function checkAdmin(bool $value, string $message): void
 $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id INTEGER, post_recording_id INTEGER, instruction_recording_id INTEGER, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
 $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER NOT NULL, extension TEXT NOT NULL, PRIMARY KEY (group_id, extension))');
+$db->exec('CREATE TABLE advancedpaging_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)');
 $core = new AdminTestCore();
 $recordings = new AdminTestRecordings();
 $module = new \FreePBX\modules\Advancedpaging((object) ['Database' => $db, 'Core' => $core, 'Recordings' => $recordings]);
@@ -51,6 +52,13 @@ $result = $page->handle('POST', [], $post, $session);
 checkAdmin($result['status'] === 200 && strpos($result['html'], '&lt;Group&gt;') !== false, 'Save or list escaping failed.');
 checkAdmin($GLOBALS['reloadCount'] === 1 && count($module->getGroup(1)['members']) === 2, 'Save did not persist group and members.');
 checkAdmin($session['advancedpaging_csrf'] !== $token, 'CSRF token did not rotate.');
+$settings = $page->handle('GET', ['view' => 'settings'], [], $session);
+checkAdmin(strpos($settings['html'], 'Drop Silence') !== false && strpos($settings['html'], 'value="1" selected') !== false,
+    'Drop Silence default or settings UI missing.');
+$settingsPost = ['action' => 'save_settings', 'csrf' => $session['advancedpaging_csrf'], 'drop_silence' => '0'];
+$settingsSaved = $page->handle('POST', [], $settingsPost, $session);
+checkAdmin($settingsSaved['status'] === 200 && !$module->getDropSilence()
+    && $GLOBALS['reloadCount'] === 2, 'Drop Silence setting was not saved.');
 checkAdmin($page->handle('POST', [], $post, $session)['status'] === 403, 'Old CSRF token was reusable.');
 $post['csrf'] = $session['advancedpaging_csrf'];
 $post['id'] = '1';
@@ -63,6 +71,6 @@ $post['members'] = ['101'];
 $result = $page->handle('POST', [], $post, $session);
 checkAdmin($module->getGroup(1)['extension'] === '501' && $module->getGroup(1)['members'] === ['101'], 'Edit failed.');
 $result = $page->handle('POST', [], ['action' => 'delete', 'id' => '1', 'csrf' => $session['advancedpaging_csrf']], $session);
-checkAdmin($result['status'] === 200 && $module->getGroup(1) === null && $GLOBALS['reloadCount'] === 3, 'Delete or apply-config signal failed.');
+checkAdmin($result['status'] === 200 && $module->getGroup(1) === null && $GLOBALS['reloadCount'] === 4, 'Delete or apply-config signal failed.');
 checkAdmin($page->handle('GET', ['id' => '../1'], [], $session)['status'] === 400, 'Malformed group ID was accepted.');
 echo "Administration CRUD, CSRF, validation, and escaping tests passed.\n";

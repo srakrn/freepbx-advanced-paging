@@ -60,6 +60,7 @@ final class Advancedpaging implements BMO
         try {
             SchemaMigrator::ensureUniqueExtensions($this->freepbx->Database);
             SchemaMigrator::ensurePagingOptions($this->freepbx->Database);
+            SchemaMigrator::ensureSettingsTable($this->freepbx->Database);
             $this->ensureRuntimeDirectory($runtimeDirectory, $ownerUser, $ownerGroup);
             (new RuntimeProvisioner($asteriskDirectory, $runtimeDirectory, null, null, $ownerUser, $ownerGroup))->install();
             freepbx_log(FPBX_LOG_NOTICE, 'Advanced Paging schema and AMI runtime account provisioned');
@@ -111,6 +112,38 @@ final class Advancedpaging implements BMO
     public function getGroup(int $id): ?array
     {
         return $this->groups->get($id);
+    }
+
+    /** Match the Paging module default: drop silence unless explicitly disabled. */
+    public function getDropSilence(): bool
+    {
+        $statement = $this->freepbx->Database->prepare(
+            'SELECT setting_value FROM advancedpaging_settings WHERE setting_key = ?'
+        );
+        $statement->execute(['drop_silence']);
+        $value = $statement->fetchColumn();
+        return $value === false ? true : $value === '1';
+    }
+
+    public function setDropSilence($enabled): void
+    {
+        if (!in_array($enabled, [true, false, 0, 1, '0', '1'], true)) {
+            throw new InvalidArgumentException('Drop Silence must be enabled or disabled.');
+        }
+        $db = $this->freepbx->Database;
+        $db->beginTransaction();
+        try {
+            $delete = $db->prepare('DELETE FROM advancedpaging_settings WHERE setting_key = ?');
+            $delete->execute(['drop_silence']);
+            $insert = $db->prepare('INSERT INTO advancedpaging_settings (setting_key, setting_value) VALUES (?, ?)');
+            $insert->execute(['drop_silence', in_array($enabled, [true, 1, '1'], true) ? '1' : '0']);
+            $db->commit();
+        } catch (\Throwable $error) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $error;
+        }
     }
 
     /** Resolve a session snapshot using Core and AstDB, never from-internal. */
@@ -200,7 +233,8 @@ final class Advancedpaging implements BMO
                     }
                 }
                 return (string) $record['filename'];
-            }
+            },
+            function (): bool { return $this->getDropSilence(); }
         );
         return $loader->load($groupId, $event);
     }

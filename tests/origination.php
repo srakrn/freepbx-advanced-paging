@@ -73,6 +73,7 @@ checkOrigination($request['Channel'] === 'Local/s@advancedpaging-whisper/n'
     && $request['Data'] === 'ap-' . str_repeat('c', 32) . ',,,user_menu'
     && in_array('__AP_SP_DEVICE=PJSIP/210', $request['Variable'], true)
     && in_array('__CONFBRIDGE(user,startmuted)=no', $request['Variable'], true)
+    && in_array('__CONFBRIDGE(user,dsp_drop_silence)=yes', $request['Variable'], true)
     && $request['CallerID'] === 'Caller One <101>',
     'Whisper origination was not routed through the ChanSpy conference worker.');
 

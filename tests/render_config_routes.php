@@ -12,6 +12,7 @@ final class RouteTestModule
             ['id' => '22', 'extension' => '8556', 'enabled' => 0, 'name' => 'Disabled'],
         ];
     }
+    public function getDropSilence(): bool { return false; }
 }
 class FreePBX
 {
@@ -37,7 +38,7 @@ if (!isset($ext->contexts['ext-advancedpaging']['8555'])
 }
 $steps = array_column($ext->contexts['app-advancedpaging']['21'], 1);
 $rendered = implode("\n", $steps);
-foreach (['AdvancedPagingStart', 'AP_ADMITTED', 'Hangup(41)', 'ConfBridge(${AP_CONF}'] as $expected) {
+foreach (['AdvancedPagingStart', 'AP_ADMITTED', 'Hangup(41)', 'ConfBridge(${AP_CONF}', 'CONFBRIDGE(user,dsp_drop_silence)=no'] as $expected) {
     if (strpos($rendered, $expected) === false) {
         throw new RuntimeException('Runtime admission route lacks ' . $expected);
     }

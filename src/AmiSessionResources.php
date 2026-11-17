@@ -63,7 +63,7 @@ final class AmiSessionResources implements AsteriskSessionResources
         }
     }
 
-    public function startOrigination(AmiOrigination $origin, string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false, array $callerId = []): void
+    public function startOrigination(AmiOrigination $origin, string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false, array $callerId = [], bool $dropSilence = true): void
     {
         if ($this->released || isset($this->originations[$origin->id()])) {
             throw new RuntimeException('Cannot register origination.');
@@ -71,7 +71,7 @@ final class AmiSessionResources implements AsteriskSessionResources
         // Register first: a write or response failure may still have created a call.
         $this->originations[$origin->id()] = $origin;
         try {
-            $origin->start($target, $conference, $timeoutMs, $allowLocalForTests, $autoAnswer, $whisper, $callerId);
+            $origin->start($target, $conference, $timeoutMs, $allowLocalForTests, $autoAnswer, $whisper, $callerId, $dropSilence);
         } catch (Throwable $error) {
             if (!$origin->submitted()) {
                 unset($this->originations[$origin->id()]);

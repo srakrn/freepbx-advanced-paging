@@ -38,6 +38,7 @@ namespace {
         $db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id INTEGER, post_recording_id INTEGER, instruction_recording_id INTEGER, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
         $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER NOT NULL, extension TEXT NOT NULL '
             . ($rejectMember ? "CHECK(extension != '101')" : '') . ', PRIMARY KEY (group_id, extension))');
+        $db->exec('CREATE TABLE advancedpaging_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)');
         return $db;
     }
     function backupModule(PDO $db): \FreePBX\modules\Advancedpaging {
@@ -52,10 +53,12 @@ namespace {
     $source->saveGroup(['name' => 'Office', 'extension' => '500', 'enabled' => '1', 'audio_mode' => 'duplex',
         'members' => ['100', '101'], 'pre_recording_id' => '7', 'post_recording_id' => '8',
         'instruction_recording_id' => '7', 'speaker_volume' => 9, 'busy_policy' => 2]);
+    $source->setDropSilence(false);
     $backup = new \FreePBX\modules\Advancedpaging\Backup((object) ['Advancedpaging' => $source]);
     $backup->runBackup(null, null);
     checkBackup($backup->dependencies === ['core', 'recordings'], 'Missing backup dependencies.');
-    checkBackup($backup->configs['version'] === 2 && count($backup->configs['groups']) === 1, 'Backup not exported.');
+    checkBackup($backup->configs['version'] === 3 && count($backup->configs['groups']) === 1
+        && $backup->configs['settings']['drop_silence'] === false, 'Backup not exported.');
     checkBackup(!isset($backup->configs['groups'][0]['id']), 'Backup must not export internal group IDs.');
     $target = backupModule(backupDb());
     $restore = new \FreePBX\modules\Advancedpaging\Restore((object) ['Advancedpaging' => $target], $backup->configs);
@@ -66,6 +69,7 @@ namespace {
     checkBackup((string) $result['pre_recording_id'] === '7' && (string) $result['post_recording_id'] === '8', 'Recording IDs not preserved.');
     checkBackup((string) $result['instruction_recording_id'] === '7' && (int) $result['speaker_volume'] === 9
         && (int) $result['busy_policy'] === 2, 'New paging options were not preserved.');
+    checkBackup(!$target->getDropSilence(), 'Drop Silence setting was not restored.');
     try {
         $restore->runRestore();
         throw new RuntimeException('Existing group was overwritten.');

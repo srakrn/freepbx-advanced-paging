@@ -15,19 +15,22 @@ final class RuntimeSnapshot
     private $resolveTargets;
     private $autoAnswer;
     private $recording;
+    private $dropSilence;
 
     public function __construct(
         callable $getGroup,
         callable $deviceUser,
         callable $resolveTargets,
         callable $autoAnswer,
-        callable $recording
+        callable $recording,
+        ?callable $dropSilence = null
     ) {
         $this->getGroup = $getGroup;
         $this->deviceUser = $deviceUser;
         $this->resolveTargets = $resolveTargets;
         $this->autoAnswer = $autoAnswer;
         $this->recording = $recording;
+        $this->dropSilence = $dropSilence ?? static function (): bool { return true; };
     }
 
     public function load(int $groupId, array $event): array
@@ -121,6 +124,7 @@ final class RuntimeSnapshot
             'instruction_recording_id' => $instructionId === null || $instructionId === '' ? null : (string) $instructionId,
             'busy_policy' => $busyPolicy,
             'caller_id' => $callerId,
+            'drop_silence' => (bool) ($this->dropSilence)(),
             'setup_seconds' => 5.0, 'recording_files' => $files,
         ];
     }

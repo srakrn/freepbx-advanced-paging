@@ -10,6 +10,7 @@ final class WorkerRouteModule
     {
         return [['id' => '11', 'extension' => '8555', 'enabled' => 1]];
     }
+    public function getDropSilence(): bool { return true; }
 }
 class FreePBX
 {

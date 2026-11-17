@@ -34,9 +34,11 @@ final class MockRecordings
 $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY, name TEXT, extension TEXT, enabled INTEGER, audio_mode TEXT, pre_recording_id INTEGER, post_recording_id INTEGER, instruction_recording_id INTEGER, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
 $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER, extension TEXT)');
+$db->exec('CREATE TABLE advancedpaging_settings (setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)');
 $db->exec('CREATE TABLE paging_autoanswer (useragent TEXT, var TEXT, setting TEXT)');
 $db->exec("INSERT INTO paging_autoanswer VALUES ('TestPhone', 'ALERTINFO', 'Specific Answer')");
-$db->exec("INSERT INTO advancedpaging_groups VALUES (1, 'Test', '8555', 1, 'duplex', 7, 8)");
+$db->exec("INSERT INTO advancedpaging_groups (id, name, extension, enabled, audio_mode, pre_recording_id, post_recording_id) "
+    . "VALUES (1, 'Test', '8555', 1, 'duplex', 7, 8)");
 $db->exec("INSERT INTO advancedpaging_members VALUES (1, '100'), (1, '101')");
 $freepbx = (object) ['Database' => $db, 'Core' => new MockCore(), 'astman' => new MockManager(), 'Recordings' => new MockRecordings()];
 $module = new \FreePBX\modules\Advancedpaging($freepbx);

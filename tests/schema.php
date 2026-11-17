@@ -14,8 +14,13 @@ $db = schemaDb();
 SchemaMigrator::ensureUniqueExtensions($db);
 SchemaMigrator::ensurePagingOptions($db);
 SchemaMigrator::ensurePagingOptions($db);
+SchemaMigrator::ensureSettingsTable($db);
+SchemaMigrator::ensureSettingsTable($db);
 if (count($db->query('PRAGMA table_info(advancedpaging_groups)')->fetchAll(PDO::FETCH_ASSOC)) !== 6) {
     throw new RuntimeException('Paging option columns were not migrated idempotently.');
+}
+if (!$db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='advancedpaging_settings'")->fetchColumn()) {
+    throw new RuntimeException('Module settings table migration failed.');
 }
 SchemaMigrator::ensureUniqueExtensions($db);
 $db->exec("INSERT INTO advancedpaging_groups (id, extension, name) VALUES (1, '100', 'one')");

@@ -77,4 +77,25 @@ final class SchemaMigrator
             }
         }
     }
+
+    public static function ensureSettingsTable(PDO $db): void
+    {
+        $driver = $db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'mysql') {
+            $db->exec(
+                'CREATE TABLE IF NOT EXISTS advancedpaging_settings (' .
+                'setting_key VARCHAR(64) NOT NULL PRIMARY KEY, setting_value VARCHAR(255) NOT NULL' .
+                ') ENGINE=InnoDB'
+            );
+            return;
+        }
+        if ($driver === 'sqlite') {
+            $db->exec(
+                'CREATE TABLE IF NOT EXISTS advancedpaging_settings (' .
+                'setting_key TEXT PRIMARY KEY, setting_value TEXT NOT NULL)'
+            );
+            return;
+        }
+        throw new RuntimeException('Unsupported FreePBX database driver.');
+    }
 }

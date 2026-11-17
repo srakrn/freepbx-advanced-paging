@@ -15,6 +15,8 @@ $db->exec('CREATE TABLE advancedpaging_groups (id INT PRIMARY KEY AUTO_INCREMENT
 $db->exec('CREATE TABLE advancedpaging_members (group_id INT NOT NULL, extension VARCHAR(25) NOT NULL, PRIMARY KEY (group_id, extension)) ENGINE=InnoDB');
 SchemaMigrator::ensureUniqueExtensions($db);
 SchemaMigrator::ensureUniqueExtensions($db);
+SchemaMigrator::ensurePagingOptions($db);
+SchemaMigrator::ensureSettingsTable($db);
 $db->exec("INSERT INTO advancedpaging_groups (id, extension, name, enabled, audio_mode) VALUES (1, '100', 'one', 1, 'simplex')");
 try {
     $db->exec("INSERT INTO advancedpaging_groups (id, extension, name, enabled, audio_mode) VALUES (2, '100', 'two', 1, 'simplex')");
