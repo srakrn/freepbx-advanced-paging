@@ -58,6 +58,7 @@ namespace {
     checkBackup(!isset($backup->configs['groups'][0]['id']), 'Backup must not export internal group IDs.');
     $target = backupModule(backupDb());
     $restore = new \FreePBX\modules\Advancedpaging\Restore((object) ['Advancedpaging' => $target], $backup->configs);
+    $restore->reset();
     $restore->runRestore();
     $result = $target->getGroup(1);
     checkBackup($result['extension'] === '500' && $result['members'] === ['100', '101'], 'Backup round trip failed.');

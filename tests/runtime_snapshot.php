@@ -17,15 +17,19 @@ $loader = new RuntimeSnapshot(
         if ($caller !== '100' || $device !== '100') {
             throw new RuntimeException('Caller identity was not passed.');
         }
-        return ['PJSIP/101'];
+        return [['channel' => 'PJSIP/101/sip:101@192.0.2.1:5060', 'endpoint' => '101', 'user_agent' => 'TestPhone']];
     },
-    static function (): array { return ['ALERTINFO' => 'Ring Answer', 'CALLINFO' => '<uri>;answer-after=0']; },
+    static function (array $targets): array {
+        return ['ALERTINFO' => 'Ring Answer', 'CALLINFO' => '<uri>;answer-after=0',
+            'overrides' => [$targets[0]['channel'] => ['ALERTINFO' => 'Intercom']]];
+    },
     static function (string $id) use (&$recordings): string { return $recordings[$id] ?? ''; }
 );
 $snapshot = $loader->load(1, ['CallerChannel' => 'PJSIP/100-00000001']);
 $recordings['8'] = 'custom/changed';
 $groups[1]['audio_mode'] = 'simplex';
 if ($snapshot['mode'] !== 'duplex' || $snapshot['recording_files']['8'] !== 'custom/close'
+    || $snapshot['targets'][0]['auto_answer']['ALERTINFO'] !== 'Intercom'
     || $snapshot['recording_files']['7'] !== 'custom/open&custom/part2') {
     throw new RuntimeException('Session snapshot was not stable.');
 }

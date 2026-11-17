@@ -42,8 +42,10 @@ final class GroupLock
     {
         $dir = realpath($directory);
         $info = $dir === false ? false : stat($dir);
-        if ($info === false || !is_dir($dir) || ($info['mode'] & 0022) !== 0
-            || (function_exists('posix_geteuid') && $info['uid'] !== posix_geteuid())) {
+        $effectiveUser = function_exists('posix_geteuid') ? posix_geteuid() : null;
+        $ownsDirectory = $info !== false
+            && ($effectiveUser === null || $effectiveUser === 0 || $info['uid'] === $effectiveUser);
+        if ($info === false || !is_dir($dir) || ($info['mode'] & 0022) !== 0 || !$ownsDirectory) {
             throw new RuntimeException('Group lock directory is not private and owned by the runtime user.');
         }
         $path = $dir . '/' . $filename;

@@ -54,7 +54,7 @@ final class SessionRuntime
             throw new InvalidArgumentException('Invalid receiver setup.');
         }
         foreach ($targets as $target) {
-            if (!is_string($target)) {
+            if (!is_string($target) && (!is_array($target) || !is_string($target['channel'] ?? null))) {
                 throw new InvalidArgumentException('Invalid receiver target.');
             }
         }
@@ -83,14 +83,24 @@ final class SessionRuntime
                 'deadline' => hrtime(true) / 1000000000 + $setupSeconds,
             ];
             $registered = true;
-            foreach (array_unique($targets) as $target) {
+            $seenTargets = [];
+            foreach ($targets as $target) {
+                $targetChannel = is_string($target) ? $target : $target['channel'];
+                if (isset($seenTargets[$targetChannel])) {
+                    continue;
+                }
+                $seenTargets[$targetChannel] = true;
+                $targetAutoAnswer = $autoAnswer;
+                if (is_array($target) && isset($target['auto_answer']) && is_array($target['auto_answer'])) {
+                    $targetAutoAnswer = array_replace($autoAnswer, $target['auto_answer']);
+                }
                 $resources->startOrigination(
                     new AmiOrigination($this->ami),
-                    $target,
+                    $targetChannel,
                     $conference,
                     (int) ceil($setupSeconds * 1000),
                     $allowLocalForTests,
-                    $autoAnswer
+                    $targetAutoAnswer
                 );
             }
             return $sessionId;

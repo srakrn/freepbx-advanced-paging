@@ -29,7 +29,7 @@ if (strpos((string) fgets($socket), 'Asterisk Call Manager/') !== 0) {
     throw new RuntimeException('Invalid AMI banner.');
 }
 $ami = new AmiConnection($socket);
-$ami->request(['Action' => 'Login', 'Username' => 'aplab', 'Secret' => $secret, 'Events' => 'on']);
+    $ami->request(['Action' => 'Login', 'Username' => getenv('AP_LAB_AMI_USERNAME'), 'Secret' => $secret, 'Events' => 'on']);
 $runtime = new SessionRuntime($ami, $lockDir, static function (string $id): string { return 'post'; });
 $targets = ['Local/answer@advancedpaging-lab/n', 'Local/unanswered@advancedpaging-lab/n'];
 $id = $runtime->start(3, $room, $caller, $callerId, 'duplex', null, '1', $targets, [], 3.0, true);

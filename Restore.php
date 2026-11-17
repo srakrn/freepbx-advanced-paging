@@ -7,6 +7,14 @@ use RuntimeException;
 
 final class Restore extends Base\RestoreBase
 {
+    /**
+     * FreePBX's default reset uninstalls the module and drops its tables.
+     * Preserve existing groups; runRestore rejects collisions transactionally.
+     */
+    public function reset()
+    {
+    }
+
     public function runRestore()
     {
         $config = $this->getConfigs();

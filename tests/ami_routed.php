@@ -18,7 +18,7 @@ if (strpos((string) fgets($socket), 'Asterisk Call Manager/') !== 0) {
     throw new RuntimeException('Invalid AMI banner.');
 }
 $ami = new AmiConnection($socket);
-$ami->request(['Action' => 'Login', 'Username' => 'aplab', 'Secret' => getenv('AP_LAB_AMI_SECRET'), 'Events' => 'on']);
+$ami->request(['Action' => 'Login', 'Username' => getenv('AP_LAB_AMI_USERNAME'), 'Secret' => getenv('AP_LAB_AMI_SECRET'), 'Events' => 'on']);
 $loaded = false;
 $runtime = RuntimeBootstrap::start($ami, getenv('AP_LAB_LOCK_DIR'),
     static function (int $group, array $event) use (&$loaded): array {

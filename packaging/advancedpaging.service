@@ -1,7 +1,7 @@
 [Unit]
 Description=FreePBX Advanced Paging controller (development preview)
-After=asterisk.service
-Requires=asterisk.service
+After=freepbx.service
+Requires=freepbx.service
 
 [Service]
 Type=simple

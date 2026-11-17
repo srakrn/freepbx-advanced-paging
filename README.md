@@ -1,42 +1,39 @@
-# Advanced Paging — development foundation
+# Advanced Paging for FreePBX 17
 
-**Development preview. Do not install or deploy this code.** The module has
-an administration page and experimental telephony components, but its
-installation, runtime integration and acceptance testing are incomplete.
+**Development preview. Do not deploy on a production PBX without completing
+the acceptance checklist.** Module installation provisions a dedicated
+loopback AMI account; operators must install and start the systemd service.
 
-The development-only `module.xml`, BMO adapter, and extension-usage hook are
-an integration starting point, not a releasable package. A FreePBX pre-install
-include rejects installation before table migration, and the BMO installation
-hook also rejects it. The module XML declares the unique group-extension
-index. FreePBX 17's actual XML migration implementation and the standalone
-schema check have been tested against temporary MariaDB; full module
-installation has not been tested.
+The FreePBX BMO install hook verifies the unique group-extension index and
+provisions dedicated loopback AMI/runtime credentials after FreePBX migrates
+the XML schema. The pre-install include checks prerequisites. Lifecycle hooks
+were exercised directly with FreePBX 17 classes and isolated MariaDB, but not
+through the complete FreePBX module manager.
 
-The foundation contains a group validator, transactional repository, session
-model, and a transport-independent session controller. The controller orders
-effects and handles duplicate events.
-The eventual runtime must serialize events, atomically lock each group,
-coordinate actual Asterisk operation completion, and clean up calls on failure.
-An initial AMI effects adapter, synchronous connection, playback driver,
-known-channel resource registry, shared event router, and process-held per-group
-locks exist. An experimental AMI origination tracker preassigns channel
-identifiers, feeds the session event router, and waits for cancellation
-evidence. A FreePBX Core/AstDB snapshot loader excludes the caller and
-non-idle devices, and snapshots recording references for each session.
-An in-process session runtime coordinates locking, origination, and setup
-deadlines after a caller has joined. An admission coordinator and pre-answer
-dialplan watchdog are exercised in isolation. A runtime bootstrap acquires a
-singleton lock and reconciles owned rooms and channels before admission.
-The development-preview foreground entry point now uses the FreePBX loader and
-an external protected AMI credential file; a systemd unit is supplied as an
-uninstalled template. Its service loop and recovery have only been tested with
-an isolated Asterisk and test configuration adapter. Deployment, real FreePBX
-bootstrap, systemd operation, and recovery across all failure modes remain
-unverified. An experimental
-dialable group route generator exists but is
-intentionally not invoked by the FreePBX configuration hook; worker contexts
-are generated but not deployed. An OS lock alone does not clean up channels
-after a crash.
+The module includes group management, a transactional repository, generated
+dialable routes, a session controller and a foreground runtime. A single AMI
+event loop coordinates multiple sessions; per-group locks prevent duplicate
+pages. The FreePBX Core/AstDB resolver selects registered PJSIP contacts and
+reuses safe Alert-Info/Call-Info user-agent overrides. Each call snapshots its
+recordings and group settings. Enabled routes use a finite pre-admission
+watchdog and fail closed if the runtime is unavailable. Runtime bootstrap
+reconciles abandoned module-owned channels before accepting new calls.
+
+The service loop has been exercised on an isolated Asterisk 22.11 instance
+using a temporary AMI account created by the same provisioner. The systemd
+unit passes `systemd-analyze verify`. Real FreePBX module-manager installation,
+systemd startup on a FreePBX host, actual FreePBX backup jobs, and physical
+Grandstream acceptance testing are still pending.
+
+## Build a manual-deployment archive
+
+```sh
+sh scripts/build-module.sh dist
+```
+
+The archive is unsigned. It does not include AMI secrets. See
+[`docs/INSTALL.md`](docs/INSTALL.md) for manual deployment and security
+requirements. Do not claim or add an official Sangoma signature.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
@@ -92,8 +89,8 @@ AMI-originated Local channel and confirms that both Local legs ended. Another
 scenario originates an answering Local receiver and an unanswered receiver,
 cancels the unanswered call at setup close, then checks automatic closing audio
 and cleanup. Worker dialplan is rendered using the installed FreePBX command
-classes. Another test dials an experimentally generated group route through the
-admission coordinator and the foreground service loop with a test snapshot
+classes. Another test dials a group route generated by the actual FreePBX
+configuration hook and runs the foreground service loop with a test snapshot
 adapter. The test checks that unacknowledged and same-group callers are
 rejected before conference admission. It kills a running test controller and
 checks that the next bootstrap removes its abandoned channels without
@@ -101,9 +98,8 @@ disconnecting an unrelated conference.
 A synthetic loopback PJSIP endpoint also receives an INVITE with
 FreePBX's default Alert-Info and Call-Info headers, answers, joins, and receives
 a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate
-that a particular phone firmware honors those headers. It also does not verify
-FreePBX endpoint resolution on actual phones, production failure recovery,
-device-specific paging settings, or the module.
+that a particular phone firmware honors those headers. It does not replace
+FreePBX module-manager installation or hardware acceptance testing.
 
 Backup and restore hooks export group configuration and declare Core and
 System Recordings dependencies. Restore creates groups transactionally and
@@ -120,7 +116,7 @@ On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 
 `packaging/advancedpaging.service` and `bin/advancedpaging-runtime` are
-development previews and must not be installed yet. The dedicated AMI
+included in the manual-deployment archive. The dedicated AMI
 credential file is expected at `/etc/asterisk/advancedpaging-runtime.ini` and
 must not be world-readable or group-writable. Startup reconciliation requires
 AMI reporting and system privileges for channel listing on the tested
@@ -145,10 +141,10 @@ Sources:
 
 ## Remaining acceptance gate
 
-Before a deployable module is packaged, demonstrate on FreePBX 17 and the
-actual Asterisk 22 patch version that the chosen architecture reliably stops
-opening playback, mutes microphones, plays the complete closing recording
-after initiator hangup, and disconnects receivers on completion or failure.
-Test late answers, simultaneous calls, event loss, reload and restart. Select
-native dialplan, AMI or ARI only after this proof; do not treat the pure state
-model as evidence that these telephony guarantees are met.
+Before production deployment, install through FreePBX's module manager on a
+disposable FreePBX 17 system, validate Apply Config and group destinations,
+run a real FreePBX backup/restore, and perform the acceptance matrix from the
+specification on both Asterisk 22.10 and 22.11. Verify Grandstream firmware
+auto-answer, one-way microphone isolation, full-duplex audio, announcement
+timing, failover and restart cleanup. The isolated Local/PJSIP simulator does
+not prove physical handset behavior.

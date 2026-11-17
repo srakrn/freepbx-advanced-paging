@@ -61,7 +61,7 @@ def main():
         auto_capture = root / "automatic-receiver.wav"
         concurrent_captures = [root / "concurrent-1.wav", root / "concurrent-2.wav"]
         setup_capture = root / "originated-receiver.wav"
-        lock_dir = root / "locks"
+        lock_dir = root / "run/advancedpaging"
         lock_dir.mkdir(mode=0o700)
         sip_peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sip_peer.bind(("127.0.0.1", 0))
@@ -178,16 +178,19 @@ def main():
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
             ami_port = probe.getsockname()[1]
-        ami_secret = secrets.token_hex(24)
+        provisioned = subprocess.run(
+            ["php", str(pathlib.Path(__file__).parent / "runtime_provisioner_lab.php"),
+             str(root / "etc"), str(lock_dir), str(ami_port)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if provisioned.returncode:
+            raise RuntimeError("Runtime AMI account provisioning failed: " + provisioned.stderr + provisioned.stdout)
+        runtime_config = json.loads(provisioned.stdout)
+        service_config = root / "etc/advancedpaging-runtime.ini"
         (root / "etc/manager.conf").write_text(
             f"[general]\nenabled=yes\nbindaddr=127.0.0.1\nport={ami_port}\n"
-            f"[aplab]\nsecret={ami_secret}\nread=call,user,reporting,system\nwrite=call,originate,reporting,system\n"
+            "#include manager_custom.conf\n"
         )
-        service_config = root / "runtime.ini"
-        service_config.write_text(
-            f"host=127.0.0.1\nport={ami_port}\nusername=aplab\nsecret={ami_secret}\n"
-        )
-        service_config.chmod(0o600)
         (root / "etc/confbridge.conf").write_text(
             "[test_bridge]\ntype=bridge\n"
             "[test_user]\ntype=user\nquiet=yes\n"
@@ -201,10 +204,6 @@ def main():
         )
         worker_dialplan = subprocess.run(
             ["php", str(pathlib.Path(__file__).parent / "render_worker_dialplan.php")],
-            capture_output=True, text=True, timeout=8, check=True,
-        ).stdout
-        group_dialplan = subprocess.run(
-            ["php", str(pathlib.Path(__file__).parent / "render_group_routes.php")],
             capture_output=True, text=True, timeout=8, check=True,
         ).stdout
         freepbx_dialplan = pathlib.Path("/etc/asterisk/extensions_additional.conf").read_text()
@@ -255,7 +254,6 @@ def main():
             "exten => conc2-caller,1,ConfBridge(ap-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             + worker_dialplan
-            + group_dialplan
             + autoanswer_contexts
             + "\n[sub-check-pseries]\nexten => s,1,Return()\n"
         )
@@ -330,7 +328,8 @@ def main():
             print(participants.strip())
             started = time.monotonic()
             env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port),
-                       AP_LAB_AMI_SECRET=ami_secret, AP_LAB_CONFERENCE=main_room)
+                       AP_LAB_AMI_SECRET=runtime_config["secret"],
+                       AP_LAB_AMI_USERNAME=runtime_config["username"], AP_LAB_CONFERENCE=main_room)
             playback_result = subprocess.run(
                 ["php", str(pathlib.Path(__file__).parent / "ami_playback.php")],
                 env=env, capture_output=True, text=True, timeout=15,
@@ -415,7 +414,8 @@ def main():
 
             def ami_mute(muted):
                 env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port),
-                           AP_LAB_AMI_SECRET=ami_secret, AP_LAB_CONFERENCE=mute_room,
+                           AP_LAB_AMI_SECRET=runtime_config["secret"],
+                           AP_LAB_AMI_USERNAME=runtime_config["username"], AP_LAB_CONFERENCE=mute_room,
                            AP_LAB_CHANNEL=match.group(), AP_LAB_MUTE="1" if muted else "0")
                 result = subprocess.run(
                     ["php", str(pathlib.Path(__file__).parent / "ami_mute.php")],
@@ -463,7 +463,8 @@ def main():
                     raise RuntimeError("Channel identity unavailable: " + info)
                 return found.group(1)
 
-            auto_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+            auto_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=runtime_config["secret"],
+                            AP_LAB_AMI_USERNAME=runtime_config["username"],
                             AP_LAB_CONFERENCE=auto_room, AP_LAB_CALLER=caller_match.group(),
                             AP_LAB_CALLER_ID=channel_unique_id(caller_match.group()),
                             AP_LAB_CHANNEL=receiver_match.group(),
@@ -487,7 +488,8 @@ def main():
                 raise RuntimeError(f"Automatic closing playback was truncated: {automatic_tone} samples.")
             print(f"Automatic receiver captured {automatic_tone} audible-amplitude samples.")
 
-            originate_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+            originate_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=runtime_config["secret"],
+                                 AP_LAB_AMI_USERNAME=runtime_config["username"],
                                  AP_LAB_CONFERENCE="ap-" + "f" * 32)
             origination = subprocess.run(
                 ["php", str(pathlib.Path(__file__).parent / "ami_origination.php")],
@@ -512,7 +514,8 @@ def main():
                 if time.monotonic() > deadline:
                     raise RuntimeError("Setup caller did not join: " + participants)
                 time.sleep(0.1)
-            setup_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+            setup_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=runtime_config["secret"],
+                             AP_LAB_AMI_USERNAME=runtime_config["username"],
                              AP_LAB_CONFERENCE=setup_room, AP_LAB_CALLER=caller_match.group(),
                              AP_LAB_CALLER_ID=channel_unique_id(caller_match.group()), AP_LAB_LOCK_DIR=str(lock_dir))
             setup = subprocess.run(
@@ -654,7 +657,8 @@ def main():
                     crashed.wait()
                 cli("confbridge kick unrelated all")
 
-            pjsip_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+            pjsip_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=runtime_config["secret"],
+                             AP_LAB_AMI_USERNAME=runtime_config["username"],
                              AP_LAB_CONFERENCE="ap-" + "1" * 32)
             pjsip = subprocess.run(
                 ["php", str(pathlib.Path(__file__).parent / "ami_pjsip.php")],
@@ -672,7 +676,7 @@ def main():
             if not received_byes:
                 raise RuntimeError("Synthetic phone did not receive a BYE during cleanup.")
             invite = received_invites[-1].lower()
-            if "alert-info:" not in invite or "ring answer" not in invite or "call-info:" not in invite or "answer-after=0" not in invite:
+            if "alert-info:" not in invite or "intercom" not in invite or "call-info:" not in invite or "answer-after=0" not in invite:
                 log.flush()
                 log.seek(0)
                 trace = "\n".join(line for line in log.read().splitlines() if any(
@@ -702,7 +706,8 @@ def main():
                                  "caller_id": channel_unique_id(caller_match.group()),
                                  "receiver": receiver_match.group(),
                                  "receiver_id": channel_unique_id(receiver_match.group())})
-            concurrent_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+            concurrent_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=runtime_config["secret"],
+                                  AP_LAB_AMI_USERNAME=runtime_config["username"],
                                   AP_LAB_LOCK_DIR=str(lock_dir), AP_LAB_SESSIONS=json.dumps(settings))
             concurrent = subprocess.run(
                 ["php", str(pathlib.Path(__file__).parent / "ami_concurrent.php")],

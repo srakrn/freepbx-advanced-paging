@@ -39,7 +39,7 @@ if ($banner === false || strpos($banner, 'Asterisk Call Manager/') !== 0) {
     throw new RuntimeException('Invalid AMI banner.');
 }
 $ami = new AmiConnection($socket);
-$ami->request(['Action' => 'Login', 'Username' => 'aplab', 'Secret' => $secret, 'Events' => 'off']);
+$ami->request(['Action' => 'Login', 'Username' => getenv('AP_LAB_AMI_USERNAME'), 'Secret' => $secret, 'Events' => 'off']);
 $effects = new AsteriskEffects($ami, new UnusedPlayback(), new UnusedResources(), $conference);
 $effects->setMuted($channel, $mute === '1');
 fclose($socket);

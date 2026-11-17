@@ -7,6 +7,9 @@ use AdvancedPaging\GroupValidator;
 use AdvancedPaging\EndpointResolver;
 use AdvancedPaging\AutoAnswerSettings;
 use AdvancedPaging\RuntimeSnapshot;
+use AdvancedPaging\RuntimeProvisioner;
+use AdvancedPaging\GroupLock;
+use AdvancedPaging\SchemaMigrator;
 use BMO;
 use InvalidArgumentException;
 use PDO;
@@ -17,10 +20,12 @@ require_once __DIR__ . '/src/GroupValidator.php';
 require_once __DIR__ . '/src/EndpointResolver.php';
 require_once __DIR__ . '/src/AutoAnswerSettings.php';
 require_once __DIR__ . '/src/RuntimeSnapshot.php';
+require_once __DIR__ . '/src/RuntimeProvisioner.php';
+require_once __DIR__ . '/src/GroupLock.php';
+require_once __DIR__ . '/src/SchemaMigrator.php';
 
 /**
- * Development-only FreePBX adapter. The install guard prevents accidental
- * deployment before the call-control engine and UI are implemented and tested.
+ * FreePBX module adapter.
  */
 final class Advancedpaging implements BMO
 {
@@ -38,12 +43,48 @@ final class Advancedpaging implements BMO
 
     public function install()
     {
-        throw new RuntimeException('Advanced Paging is a development preview and cannot be installed.');
+        return $this->installAt('/etc/asterisk', '/run/advancedpaging', 'asterisk', 'asterisk');
+    }
+
+    /** Same lifecycle with injectable paths for isolated tests. */
+    public function installAt(string $asteriskDirectory, string $runtimeDirectory, ?string $ownerUser, ?string $ownerGroup): bool
+    {
+        try {
+            SchemaMigrator::ensureUniqueExtensions($this->freepbx->Database);
+            $this->ensureRuntimeDirectory($runtimeDirectory, $ownerUser, $ownerGroup);
+            (new RuntimeProvisioner($asteriskDirectory, $runtimeDirectory, null, null, $ownerUser, $ownerGroup))->install();
+            freepbx_log(FPBX_LOG_NOTICE, 'Advanced Paging schema and AMI runtime account provisioned');
+            needreload();
+            return true;
+        } catch (\Throwable $error) {
+            freepbx_log(FPBX_LOG_ERROR, 'Advanced Paging installation failed safely: ' . $error->getMessage());
+            return false;
+        }
     }
 
     public function uninstall()
     {
-        // FreePBX owns the schema declared in module.xml.
+        return $this->uninstallAt('/etc/asterisk', '/run/advancedpaging', null, null);
+    }
+
+    public function uninstallAt(string $asteriskDirectory, string $runtimeDirectory, ?string $ownerUser, ?string $ownerGroup): bool
+    {
+        $lock = GroupLock::tryAcquireRuntime($runtimeDirectory);
+        if ($lock === null) {
+            freepbx_log(FPBX_LOG_WARNING, 'Stop the Advanced Paging runtime before uninstalling the module');
+            return false;
+        }
+        try {
+            (new RuntimeProvisioner($asteriskDirectory, $runtimeDirectory, null, null, $ownerUser, $ownerGroup))->uninstall();
+            $lock->release();
+            freepbx_log(FPBX_LOG_NOTICE, 'Advanced Paging AMI runtime account removed');
+            needreload();
+            return true;
+        } catch (\Throwable $error) {
+            $lock->release();
+            freepbx_log(FPBX_LOG_ERROR, 'Advanced Paging uninstall failed safely: ' . $error->getMessage());
+            return false;
+        }
     }
 
     public function listGroups(): array
@@ -72,7 +113,8 @@ final class Advancedpaging implements BMO
             static function (string $endpoint) use ($manager): string {
                 $result = $manager->GetVar(null, 'DEVICE_STATE(' . $endpoint . ')');
                 return ($result['Response'] ?? '') === 'Success' ? (string) ($result['Value'] ?? '') : '';
-            }
+            },
+            function (string $device) use ($manager): array { return $this->registeredContacts($manager, $device); }
         );
         return $resolver->resolve($members, $callerExtension, $callerDevice);
     }
@@ -104,7 +146,7 @@ final class Advancedpaging implements BMO
             function (array $members, string $caller, string $device): array {
                 return $this->resolveEligibleDevices($members, $caller, $device);
             },
-            function (): array { return $this->getPagingAutoAnswerDefaults(); },
+            function (array $targets): array { return $this->getAutoAnswerForTargets($targets); },
             function (string $id) use ($groupId): string {
                 $record = $this->freepbx->Recordings->getRecordingById($id);
                 if (empty($record['filename']) || empty($record['soundlist'])) {
@@ -121,6 +163,59 @@ final class Advancedpaging implements BMO
             }
         );
         return $loader->load($groupId, $event);
+    }
+
+    private function registeredContacts($manager, string $device): array
+    {
+        $rows = $manager->database_show('registrar/contact');
+        if (!is_array($rows)) {
+            throw new RuntimeException('Cannot load PJSIP registrations.');
+        }
+        $prefix = '/registrar/contact/' . $device . ';';
+        $result = [];
+        foreach ($rows as $key => $json) {
+            if (!is_string($key) || strpos($key, $prefix) !== 0 || !is_string($json)) {
+                continue;
+            }
+            $contact = json_decode($json, true);
+            if (!is_array($contact) || empty($contact['uri']) || empty($contact['user_agent'])) {
+                continue;
+            }
+            $result[] = ['uri' => $contact['uri'], 'user_agent' => $contact['user_agent']];
+        }
+        return $result;
+    }
+
+    /**
+     * Reuse existing Paging user-agent overrides for alert headers only.
+     * Paging-specific Dial options and expressions are intentionally ignored.
+     */
+    private function getAutoAnswerForTargets(array $targets): array
+    {
+        $defaults = $this->getPagingAutoAnswerDefaults();
+        $statement = $this->freepbx->Database->query(
+            "SELECT useragent, var, setting FROM paging_autoanswer WHERE useragent != 'default' ORDER BY LENGTH(useragent) DESC, useragent, var"
+        );
+        $rows = $statement->fetchAll(PDO::FETCH_ASSOC);
+        $overrides = [];
+        foreach ($targets as $target) {
+            if (!is_array($target) || empty($target['channel']) || empty($target['user_agent'])) {
+                continue;
+            }
+            $perTarget = [];
+            foreach ($rows as $row) {
+                $prefix = (string) ($row['useragent'] ?? '');
+                $variable = (string) ($row['var'] ?? '');
+                if ($prefix === '' || strpos((string) $target['user_agent'], $prefix) !== 0
+                    || !in_array($variable, ['ALERTINFO', 'CALLINFO'], true)
+                    || array_key_exists($variable, $perTarget)) {
+                    continue;
+                }
+                $perTarget[$variable] = AutoAnswerSettings::validate((string) ($row['setting'] ?? ''));
+            }
+            $overrides[$target['channel']] = $perTarget;
+        }
+        return ['ALERTINFO' => $defaults['ALERTINFO'], 'CALLINFO' => $defaults['CALLINFO'], 'overrides' => $overrides];
     }
 
     public function saveGroup(array $input, ?int $id = null): int
@@ -213,6 +308,31 @@ final class Advancedpaging implements BMO
                 return !empty($this->freepbx->Recordings->getRecordingById($id));
             }
         );
+    }
+
+    private function ensureRuntimeDirectory(string $path, ?string $ownerUser, ?string $ownerGroup): void
+    {
+        if (is_link($path)) {
+            throw new RuntimeException('Runtime directory must not be a symlink.');
+        }
+        if (!is_dir($path) && !mkdir($path, 0700, true) && !is_dir($path)) {
+            throw new RuntimeException('Cannot create Advanced Paging runtime directory.');
+        }
+        if (!chmod($path, 0700)) {
+            throw new RuntimeException('Cannot secure Advanced Paging runtime directory.');
+        }
+        if ($ownerUser !== null || $ownerGroup !== null) {
+            if (!function_exists('posix_getpwnam') || !function_exists('posix_getgrnam')) {
+                throw new RuntimeException('POSIX ownership functions are required.');
+            }
+            $user = $ownerUser === null ? null : posix_getpwnam($ownerUser);
+            $group = $ownerGroup === null ? null : posix_getgrnam($ownerGroup);
+            if (($ownerUser !== null && $user === false) || ($ownerGroup !== null && $group === false)
+                || ($user !== null && $user !== false && !chown($path, $user['uid']))
+                || ($group !== null && $group !== false && !chgrp($path, $group['gid']))) {
+                throw new RuntimeException('Cannot assign runtime directory to Asterisk.');
+            }
+        }
     }
 
     public function deleteGroup(int $id): bool

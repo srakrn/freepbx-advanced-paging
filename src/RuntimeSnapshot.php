@@ -48,10 +48,19 @@ final class RuntimeSnapshot
             throw new RuntimeException('Paging group is unavailable.');
         }
         $targets = ($this->resolveTargets)($group['members'], $extension, $deviceId);
-        $autoAnswer = ($this->autoAnswer)();
+        $autoAnswer = ($this->autoAnswer)($targets);
         if (!is_array($targets) || !$targets || !is_array($autoAnswer)) {
             throw new RuntimeException('No eligible paging endpoints or auto-answer settings.');
         }
+        $overrides = $autoAnswer['overrides'] ?? [];
+        unset($autoAnswer['overrides']);
+        foreach ($targets as &$target) {
+            if (!is_array($target) || !isset($target['channel'])) {
+                continue;
+            }
+            $target['auto_answer'] = array_replace($autoAnswer, $overrides[$target['channel']] ?? []);
+        }
+        unset($target);
         $files = [];
         $ids = [];
         foreach (['pre_recording_id', 'post_recording_id'] as $field) {

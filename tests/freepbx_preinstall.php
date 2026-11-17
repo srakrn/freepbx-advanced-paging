@@ -17,17 +17,13 @@ if (!mkdir($moduleDir, 0700, true) || !copy(__DIR__ . '/../preinstall.php', $mod
 $amp_conf = ['AMPWEBROOT' => $root];
 try {
     $runner = new module_functions();
-    try {
-        $runner->_runscripts_include([
-            'advancedpaging' => ['fileinclude' => ['install' => 'preinstall.php']],
-        ], 'install');
-        throw new RuntimeException('FreePBX pre-install guard did not reject installation.');
-    } catch (RuntimeException $error) {
-        if ($error->getMessage() !== 'Advanced Paging is a development preview and cannot be installed.') {
-            throw $error;
-        }
+    $result = $runner->_runscripts_include([
+        'advancedpaging' => ['fileinclude' => ['install' => 'preinstall.php']],
+    ], 'install');
+    if ($result !== true) {
+        throw new RuntimeException('FreePBX pre-install validation failed.');
     }
-    echo "FreePBX 17 pre-install guard rejected before schema migration.\n";
+    echo "FreePBX 17 pre-install prerequisite hook passed before schema migration.\n";
 } finally {
     unlink($moduleDir . '/preinstall.php');
     rmdir($moduleDir);

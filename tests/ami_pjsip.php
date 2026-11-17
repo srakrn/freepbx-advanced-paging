@@ -23,12 +23,13 @@ if (strpos((string) fgets($socket), 'Asterisk Call Manager/') !== 0) {
     throw new RuntimeException('Invalid AMI banner.');
 }
 $ami = new AmiConnection($socket);
-$ami->request(['Action' => 'Login', 'Username' => 'aplab', 'Secret' => $secret, 'Events' => 'on']);
+$ami->request(['Action' => 'Login', 'Username' => getenv('AP_LAB_AMI_USERNAME'), 'Secret' => $secret, 'Events' => 'on']);
 $origin = new AmiOrigination($ami);
 $settings = AutoAnswerSettings::fromPagingDefaults([
     ['var' => 'ALERTINFO', 'setting' => 'Ring Answer'],
     ['var' => 'CALLINFO', 'setting' => '<uri>\\;answer-after=0'],
 ]);
+$settings['ALERTINFO'] = 'Intercom';
 $origin->start('PJSIP/aptestphone', $room, 10000, false, $settings);
 $deadline = microtime(true) + 8;
 $joined = false;

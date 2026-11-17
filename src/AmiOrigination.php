@@ -59,7 +59,7 @@ final class AmiOrigination
         }
         $testLocal = $allowLocalForTests
             && (bool) preg_match('/^Local\/[A-Za-z0-9_-]+@[A-Za-z0-9_-]+\/n$/D', $target);
-        if (!$testLocal && !preg_match('/^PJSIP\/[A-Za-z0-9_.-]+$/D', $target)) {
+        if (!$testLocal && !preg_match('/^PJSIP\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.:@+;%=\-\[\]]{1,512})?$/D', $target)) {
             throw new InvalidArgumentException('Invalid internal endpoint.');
         }
         // Async AMI Originate on Asterisk 22 does not apply PreDialGoSub.

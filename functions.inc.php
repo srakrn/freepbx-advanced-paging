@@ -14,6 +14,9 @@ function advancedpaging_get_config($engine)
         return;
     }
     global $ext;
+    if (class_exists('\\FreePBX')) {
+        advancedpaging_generate_group_routes(\FreePBX::Advancedpaging()->listGroups());
+    }
 
     $context = 'advancedpaging-receiver';
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
@@ -101,26 +104,64 @@ function advancedpaging_generate_group_routes(array $groups)
     }
 }
 
-/**
- * Register extension usage with FreePBX's collision checker. Disabled groups
- * still reserve their numbers so enabling them cannot hijack another route.
- */
-function advancedpaging_check_extensions($exten = true)
+/** Participate in FreePBX destination/extension collision checks. */
+function advancedpaging_check_extensions($extension = true)
 {
-    if (is_array($exten) && !$exten) {
+    if (is_array($extension) && !$extension) {
         return [];
     }
     $result = [];
     foreach (\FreePBX::Advancedpaging()->listGroups() as $group) {
-        $number = $group['extension'];
-        if (is_array($exten) && !in_array($number, $exten, true)) {
+        $number = (string) $group['extension'];
+        if (is_array($extension) && !in_array($number, $extension, true)) {
             continue;
         }
         $result[$number] = [
-            'description' => _('Advanced Paging: ') . $group['name'],
+            'description' => sprintf(_('Advanced Paging: %s'), $group['name']),
             'status' => 'INUSE',
-            'edit_url' => 'config.php?display=advancedpaging',
+            'edit_url' => 'config.php?display=advancedpaging&view=edit&id=' . (int) $group['id'],
         ];
     }
     return $result;
+}
+
+/** Native destination selector integration for announcements and routes. */
+function advancedpaging_destinations()
+{
+    $destinations = [];
+    foreach (\FreePBX::Advancedpaging()->listGroups() as $group) {
+        if (empty($group['enabled'])) {
+            continue;
+        }
+        $destinations[] = [
+            'destination' => 'app-advancedpaging,' . (int) $group['id'] . ',1',
+            'description' => sprintf(_('Advanced Paging: %s (%s)'), $group['name'], $group['extension']),
+        ];
+    }
+    return $destinations;
+}
+
+function advancedpaging_getdest($groupId)
+{
+    $groupId = (string) $groupId;
+    if (!preg_match('/^[1-9][0-9]{0,8}$/D', $groupId)) {
+        return [];
+    }
+    $group = \FreePBX::Advancedpaging()->getGroup((int) $groupId);
+    return $group && !empty($group['enabled']) ? ['app-advancedpaging,' . (int) $groupId . ',1'] : [];
+}
+
+function advancedpaging_getdestinfo($destination)
+{
+    if (!is_string($destination) || !preg_match('/^app-advancedpaging,([1-9][0-9]{0,8}),1$/D', $destination, $match)) {
+        return false;
+    }
+    $group = \FreePBX::Advancedpaging()->getGroup((int) $match[1]);
+    if (!$group || empty($group['enabled'])) {
+        return [];
+    }
+    return [
+        'description' => sprintf(_('Advanced Paging: %s (%s)'), $group['name'], $group['extension']),
+        'edit_url' => 'config.php?display=advancedpaging&view=edit&id=' . (int) $match[1],
+    ];
 }

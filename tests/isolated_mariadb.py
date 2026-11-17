@@ -36,13 +36,27 @@ def main():
                 time.sleep(0.1)
             subprocess.run(
                 ["/usr/bin/mariadb", "--no-defaults", "-uroot", f"--socket={sock}",
-                 "-e", "CREATE DATABASE ap_test; CREATE DATABASE ap_freepbx_test"],
+                 "-e", "CREATE DATABASE ap_test; CREATE DATABASE ap_freepbx_test; CREATE DATABASE ap_backup_source; CREATE DATABASE ap_backup_target; CREATE DATABASE ap_install_test; CREATE DATABASE asterisk"],
                 capture_output=True, text=True, timeout=10, check=True,
             )
             env = dict(os.environ, AP_LAB_MYSQL_SOCKET=str(sock))
             result = subprocess.run(
                 ["php", str(pathlib.Path(__file__).parent / "mysql_schema.php")],
                 env=env, capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode:
+                raise RuntimeError(result.stderr + result.stdout)
+            print(result.stdout.strip())
+            result = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "freepbx_install_lifecycle.php")],
+                env=env, capture_output=True, text=True, timeout=25,
+            )
+            if result.returncode:
+                raise RuntimeError(result.stderr + result.stdout)
+            print(result.stdout.strip())
+            result = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "freepbx_backup_integration.php")],
+                env=env, capture_output=True, text=True, timeout=20,
             )
             if result.returncode:
                 raise RuntimeError(result.stderr + result.stdout)

@@ -18,16 +18,18 @@ final class EndpointResolver
     private $userDevices;
     private $device;
     private $state;
+    private $contacts;
 
-    public function __construct(callable $users, callable $userDevices, callable $device, callable $state)
+    public function __construct(callable $users, callable $userDevices, callable $device, callable $state, ?callable $contacts = null)
     {
         $this->users = $users;
         $this->userDevices = $userDevices;
         $this->device = $device;
         $this->state = $state;
+        $this->contacts = $contacts;
     }
 
-    /** Returns deduplicated PJSIP endpoint names, never dialplan destinations. */
+    /** Returns registered PJSIP contacts, never dialplan destinations. */
     public function resolve(array $members, string $callerExtension, string $callerDevice): array
     {
         $users = ($this->users)();
@@ -60,7 +62,24 @@ final class EndpointResolver
                 }
                 $endpoint = 'PJSIP/' . $deviceId;
                 if (($this->state)($endpoint) === 'NOT_INUSE') {
-                    $targets[$endpoint] = $endpoint;
+                    $contacts = $this->contacts === null ? [] : ($this->contacts)($deviceId);
+                    if (!is_array($contacts)) {
+                        throw new RuntimeException('Cannot resolve registered PJSIP contacts.');
+                    }
+                    foreach ($contacts as $contact) {
+                        if (!is_array($contact)) {
+                            continue;
+                        }
+                        $uri = $contact['uri'] ?? '';
+                        $agent = $contact['user_agent'] ?? '';
+                        if (!is_string($uri) || !preg_match('/^[A-Za-z0-9_.:@+;%=\-\[\]]{1,512}$/D', $uri)
+                            || !is_string($agent) || strlen($agent) > 255
+                            || strpbrk($agent, "\r\n") !== false) {
+                            continue;
+                        }
+                        $target = 'PJSIP/' . $deviceId . '/' . $uri;
+                        $targets[$target] = ['channel' => $target, 'endpoint' => $deviceId, 'user_agent' => $agent];
+                    }
                 }
             }
         }
