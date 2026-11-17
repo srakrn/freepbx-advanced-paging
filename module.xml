@@ -1,12 +1,13 @@
 <module>
     <rawname>advancedpaging</rawname>
     <name>Advanced Paging</name>
-    <version>17.0.0alpha6</version>
+    <version>17.0.0</version>
     <publisher>Advanced Paging contributors</publisher>
     <license>GPLv3+</license>
     <category>Applications</category>
     <description>Configurable paging groups with lifecycle announcements and simplex or duplex audio.</description>
     <changelog>
+        *17.0.0* First stable release of Advanced Paging for FreePBX 17.
         *17.0.0alpha6* Add the global Drop Silence option for paging conferences.
         *17.0.0alpha5* Preserve the initiating caller ID on receiver origination.
         *17.0.0alpha4* Add caller-only instruction playback, speaker volume override, and Skip/Force/Whisper busy policies.

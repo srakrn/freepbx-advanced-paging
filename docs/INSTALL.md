@@ -1,6 +1,6 @@
 # Advanced Paging installation guide
 
-Advanced Paging **17.0.0alpha6** is an unsigned alpha release for FreePBX 17
+Advanced Paging **17.0.0** is the first stable, unsigned release for FreePBX 17
 and Asterisk 22. It is not a Sangoma-certified module. Review these
 instructions, the release notes, and your local change-control requirements
 before installing it.
@@ -20,10 +20,10 @@ auto-answer and speaker-volume headers varies by vendor and firmware.
 ## Download and verify
 
 Download the archive and checksum from the
-[17.0.0alpha6 GitHub release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0alpha6):
+[17.0.0 GitHub release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0):
 
 ```sh
-VERSION=17.0.0alpha6
+VERSION=17.0.0
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz"
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz.sha256"
 sha256sum -c "advancedpaging-${VERSION}.tar.gz.sha256"
@@ -145,11 +145,11 @@ copy of the module-owned files and current FreePBX backup before an upgrade.
 
 For rollback, stop the service, restore the previously saved module directory
 and FreePBX backup as appropriate, then run `fwconsole reload` and start the
-service. The alpha6 migration adds a settings table and option columns with
-safe defaults; older module code ignores them. Alpha5 cannot read alpha6 backup
-format version 3, so restore the pre-upgrade backup when rolling back. Prefer
-restoring the full FreePBX backup if rollback also needs to undo group edits
-made after upgrade.
+service. The stable migration adds a settings table and option columns with
+safe defaults; older module code ignores them. Alpha5 cannot read backup format
+version 3, so restore the pre-upgrade backup when rolling back to alpha5.
+Prefer restoring the full FreePBX backup if rollback also needs to undo group
+edits made after upgrade.
 
 ## Uninstall
 

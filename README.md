@@ -1,7 +1,7 @@
 # Advanced Paging for FreePBX 17
 
-**Current release: 17.0.0alpha6** — an unsigned alpha module for FreePBX 17
-and Asterisk 22. It is not Sangoma-certified. Review the known platform and
+**Current release: 17.0.0** — the first stable, unsigned release for FreePBX
+17 and Asterisk 22. It is not Sangoma-certified. Review the known platform and
 handset limitations below before using it.
 
 ## Features
@@ -23,7 +23,7 @@ handset limitations below before using it.
 - Back up and restore group configuration without including runtime secrets.
 
 See the [installation and acceptance guide](docs/INSTALL.md) and the
-[17.0.0alpha6 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0alpha6).
+[17.0.0 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0).
 
 ## Compatibility and limitations
 
@@ -45,7 +45,7 @@ Download and verify the release archive and follow
 [`docs/INSTALL.md`](docs/INSTALL.md):
 
 ```sh
-VERSION=17.0.0alpha6
+VERSION=17.0.0
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz"
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz.sha256"
 sha256sum -c "advancedpaging-${VERSION}.tar.gz.sha256"
