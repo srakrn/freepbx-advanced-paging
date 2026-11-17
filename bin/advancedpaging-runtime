@@ -1,8 +1,8 @@
 #!/usr/bin/env php
 <?php
 
-// Development preview. Do not deploy until module install and recovery gates
-// are lifted and the documented PJSIP/hardware acceptance tests pass.
+// Foreground service entry point. The install guide documents remaining
+// endpoint- and firmware-specific acceptance checks.
 foreach (['Session', 'SessionController', 'AsteriskEffects', 'AmiConnection', 'AmiPlaybackDriver',
     'AmiSessionResources', 'AmiOrigination', 'SessionEventLoop', 'SessionEventRouter', 'GroupLock',
     'SessionRuntime', 'AdmissionCoordinator', 'CrashRecovery', 'RuntimeBootstrap', 'AutoAnswerSettings',

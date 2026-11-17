@@ -5,8 +5,7 @@ if (!defined('FREEPBX_IS_AUTH')) {
 }
 
 /**
- * Module-owned, non-routable worker contexts. Group dialplan entry points and
- * controller startup are deliberately not registered while install is gated.
+ * Register module-owned worker contexts and enabled group entry points.
  */
 function advancedpaging_get_config($engine)
 {
@@ -65,9 +64,8 @@ function advancedpaging_get_config($engine)
 }
 
 /**
- * Experimental route generator, intentionally NOT called by get_config.
- * Caller admission/watchdog and runtime discovery must be completed first;
- * otherwise a caller could be stranded in an unattended conference.
+ * Generate enabled group routes. The admission watchdog fails closed when the
+ * runtime is unavailable, so a caller cannot remain in an unattended bridge.
  */
 function advancedpaging_generate_group_routes(array $groups)
 {

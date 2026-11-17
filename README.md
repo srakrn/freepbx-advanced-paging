@@ -1,150 +1,89 @@
 # Advanced Paging for FreePBX 17
 
-**Development preview. Do not deploy on a production PBX without completing
-the acceptance checklist.** Module installation provisions a dedicated
-loopback AMI account; operators must install and start the systemd service.
+**Current release: 17.0.0alpha5** — an unsigned alpha module for FreePBX 17
+and Asterisk 22. It has been installed through the FreePBX module manager and
+smoke-tested with its systemd runtime. It is not Sangoma-certified. Review the
+known platform and handset limitations below before using it.
 
-The FreePBX BMO install hook verifies the unique group-extension index and
-provisions dedicated loopback AMI/runtime credentials after FreePBX migrates
-the XML schema. The pre-install include checks prerequisites. Lifecycle hooks
-were exercised directly with FreePBX 17 classes and isolated MariaDB, but not
-through the complete FreePBX module manager.
+## Features
 
-The module includes group management, a transactional repository, generated
-dialable routes, a session controller and a foreground runtime. A single AMI
-event loop coordinates multiple sessions; per-group locks prevent duplicate
-pages. The FreePBX Core/AstDB resolver selects registered PJSIP contacts and
-reuses safe Alert-Info/Call-Info user-agent overrides. Each call snapshots its
-recordings and group settings. Enabled routes use a finite pre-admission
-watchdog and fail closed if the runtime is unavailable. Runtime bootstrap
-reconciles abandoned module-owned channels before accepting new calls.
+- Manage named paging groups, internal PJSIP receivers, and dialable extensions.
+- One-way or duplex paging with optional pre-page and post-page System
+  Recordings.
+- Play an optional instruction to the caller alone before receiver admission.
+- Set a speaker-volume override using the Paging module's Sangoma-compatible
+  Alert-Info parameter.
+- Choose Skip, Force, or Whisper behavior for busy extensions. Whisper uses
+  ChanSpy whisper mode on busy PJSIP channels; endpoint support varies.
+- Preserve caller ID on receiver calls.
+- Serialize call events, prevent simultaneous calls to the same group, and
+  reconcile module-owned channels after runtime restarts.
+- Back up and restore group configuration without including runtime secrets.
 
-The service loop has been exercised on an isolated Asterisk 22.11 instance
-using a temporary AMI account created by the same provisioner. The systemd
-unit passes `systemd-analyze verify`. Real FreePBX module-manager installation,
-systemd startup on a FreePBX host, actual FreePBX backup jobs, and physical
-Grandstream acceptance testing are still pending.
+See the [installation and acceptance guide](docs/INSTALL.md) and the
+[17.0.0alpha5 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0alpha5).
 
-## Build a manual-deployment archive
+## Compatibility and limitations
+
+- Requires FreePBX 17, Asterisk 22, PJSIP, PHP PCNTL/PDO MySQL, and systemd.
+- Paging caller and receiver devices must be internal PJSIP extensions.
+- Handset auto-answer and volume behavior depends on the device and firmware.
+  The volume override is intended for Sangoma-compatible phones.
+- Whisper relies on Asterisk ChanSpy and the target device's active channel.
+  Validate it with the exact handset and call scenario; duplex is generally
+  not useful with Whisper.
+- If Asterisk restarts, active audio calls cannot be resumed. Recovery removes
+  stale module-owned channels and conferences.
+- The release is unsigned and not Sangoma-certified. It does not contain AMI
+  credentials; those are provisioned locally at installation.
+
+## Install
+
+Download and verify the release archive and follow
+[`docs/INSTALL.md`](docs/INSTALL.md):
+
+```sh
+VERSION=17.0.0alpha5
+curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz"
+curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz.sha256"
+sha256sum -c "advancedpaging-${VERSION}.tar.gz.sha256"
+```
+
+The module manager provisions its loopback AMI account and protected runtime
+configuration. The supplied systemd service must also be installed and
+enabled. Installation does not send a page; create a non-critical test group
+and follow the acceptance checks in the guide.
+
+## Development and tests
+
+Build a manual-deployment archive with:
 
 ```sh
 sh scripts/build-module.sh dist
 ```
 
-The archive is unsigned. It does not include AMI secrets. See
-[`docs/INSTALL.md`](docs/INSTALL.md) for manual deployment and security
-requirements. Do not claim or add an official Sangoma signature.
-
-Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
+The archive is unsigned and contains no secret material. Basic tests require
+PHP 7.4 or later and PDO SQLite:
 
 ```sh
-php tests/run.php
-php tests/controller.php
-php tests/asterisk_effects.php
-php tests/ami_resources.php
-php tests/group_lock.php
-php tests/origination.php
-php tests/endpoint_resolver.php
-php tests/autoanswer.php
-php tests/runtime_snapshot.php
-php tests/runtime_config.php
-php tests/freepbx_snapshot_adapter.php
-php tests/admin_page.php
-php tests/page_access.php
-php tests/schema.php
-php tests/backup_restore.php
-php tests/freepbx_preinstall.php
+for test in run controller asterisk_effects ami_resources group_lock \
+  origination endpoint_resolver autoanswer runtime_snapshot runtime_config \
+  freepbx_snapshot_adapter admin_page page_access schema backup_restore \
+  freepbx_preinstall; do
+  php "tests/${test}.php"
+done
 ```
 
-An isolated Asterisk lifecycle experiment is available on a Linux system with
-the Asterisk binary, modules and XML documentation installed:
+Additional integration tests:
 
 ```sh
 python3 tests/isolated_asterisk.py
-```
-
-The MySQL-specific schema migration can be tested on a Linux host with
-MariaDB server tools and PHP's PDO MySQL extension:
-
-```sh
 python3 tests/isolated_mariadb.py
 ```
 
-It starts a separate temporary MariaDB instance using a private Unix socket
-and no network listener; it does not connect to the FreePBX database. It runs
-FreePBX 17's XML table migration twice and verifies the transactional tables
-and unique extension index.
-
-It starts a second Asterisk process with temporary configuration and its own
-socket, using only Local channels and a temporary loopback-only AMI listener,
-and tears it down afterwards. It exercises
-receiver survival after initiator hangup, captured playback audio, a timed
-AMI playback injection and confirmed cancellation, AMI receiver hangup, and
-AMI adapter ConfBridge mute/unmute using a simulated microphone and a receiver
-capture. A separate scenario exercises the session controller and event pump:
-caller hangup triggers closing playback and receiver cleanup. A second
-scenario routes two concurrent sessions through one AMI connection and
-exercises real per-group locks. A separate test cancels an unanswered
-AMI-originated Local channel and confirms that both Local legs ended. Another
-scenario originates an answering Local receiver and an unanswered receiver,
-cancels the unanswered call at setup close, then checks automatic closing audio
-and cleanup. Worker dialplan is rendered using the installed FreePBX command
-classes. Another test dials a group route generated by the actual FreePBX
-configuration hook and runs the foreground service loop with a test snapshot
-adapter. The test checks that unacknowledged and same-group callers are
-rejected before conference admission. It kills a running test controller and
-checks that the next bootstrap removes its abandoned channels without
-disconnecting an unrelated conference.
-A synthetic loopback PJSIP endpoint also receives an INVITE with
-FreePBX's default Alert-Info and Call-Info headers, answers, joins, and receives
-a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate
-that a particular phone firmware honors those headers. It does not replace
-FreePBX module-manager installation or hardware acceptance testing.
-
-Backup and restore hooks export group configuration and declare Core and
-System Recordings dependencies. Restore creates groups transactionally and
-rejects conflicts rather than overwriting existing groups. Referenced extensions
-and recording IDs must already exist. The hooks have been tested with mock
-FreePBX backup adapters and isolated databases, not a real FreePBX backup job.
-
-On Asterisk 22.11, asynchronous AMI Originate was observed not to run
-`PreDialGoSub`. PJSIP calls therefore use a module-owned Local-channel wrapper
-and `Dial()`'s callee-side pre-dial hook. The isolated test uses the installed
-FreePBX `autoanswer`, `func-set-sipheader`, and `func-apply-sipheaders`
-contexts, with a test stub for the P-series helper.
-On `eich-pbx` the installed
-binary is 22.11.0 while the running PBX is 22.10.1.
-
-`packaging/advancedpaging.service` and `bin/advancedpaging-runtime` are
-included in the manual-deployment archive. The dedicated AMI
-credential file is expected at `/etc/asterisk/advancedpaging-runtime.ini` and
-must not be world-readable or group-writable. Startup reconciliation requires
-AMI reporting and system privileges for channel listing on the tested
-Asterisk version; these privileges are broad and require security review before
-deployment. No credential file or service has been installed.
-
-## Platform investigation
-
-The FreePBX 17 Paging module uses `framework_check_extension_usage()` for
-extension conflicts and its existing auto-answer dialplan for signalling.
-The FreePBX 17 Recordings module exposes `getRecordingById()` and
-`getAllRecordingsList()`; recordings can contain multiple files. Integration
-must preserve compound recordings and language selection rather than using
-only the first file.
-
-Sources:
-
-- https://github.com/FreePBX/paging/blob/release/17.0/Paging.class.php
-- https://github.com/FreePBX/recordings/blob/release/17.0/Recordings.class.php
-- https://docs.asterisk.org/Asterisk_22_Documentation/API_Documentation/AMI_Actions/ConfbridgeMute/
-- https://docs.asterisk.org/Configuration/Applications/Conferencing-Applications/ConfBridge/ConfBridge-AMI-Actions/
-
-## Remaining acceptance gate
-
-Before production deployment, install through FreePBX's module manager on a
-disposable FreePBX 17 system, validate Apply Config and group destinations,
-run a real FreePBX backup/restore, and perform the acceptance matrix from the
-specification on both Asterisk 22.10 and 22.11. Verify Grandstream firmware
-auto-answer, one-way microphone isolation, full-duplex audio, announcement
-timing, failover and restart cleanup. The isolated Local/PJSIP simulator does
-not prove physical handset behavior.
+The Asterisk test uses a separate temporary Asterisk process, temporary
+configuration, and loopback-only AMI. It exercises playback, mute control,
+origination, group concurrency, watchdogs, and crash recovery. The MariaDB
+test uses a temporary private Unix socket and does not connect to a FreePBX
+database. These tests do not replace real handset testing or a verified
+FreePBX backup/restore exercise.

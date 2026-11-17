@@ -25,8 +25,8 @@ interface SessionEffects
 /**
  * A serialized controller for one configuration snapshot.
  *
- * This is transport-independent: it is not yet connected to Asterisk and
- * does not itself provide event serialization or cross-process group locking.
+ * This is transport-independent; Asterisk effects, event serialization and
+ * cross-process group locking are supplied by the runtime adapters.
  */
 final class SessionController
 {

@@ -9,11 +9,9 @@ use Throwable;
 /**
  * Tracks one asynchronous AMI origination, including both Local channel legs.
  *
- * This is an experimental primitive, not yet the production paging originator.
  * All calls and AMI events must be serialized. An uncertain operation remains
  * tracked; callers must not release its session lock until cancellation is
- * confirmed. The module-owned receiver and pre-dial contexts are not yet
- * installed by FreePBX.
+ * confirmed. The module provisions the receiver, whisper and pre-dial contexts.
  */
 final class AmiOrigination
 {

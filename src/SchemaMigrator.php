@@ -6,8 +6,8 @@ use PDO;
 use RuntimeException;
 
 /**
- * Idempotent schema checks after FreePBX creates the declared module tables.
- * Installation remains gated until service, routing and recovery are complete.
+ * Idempotent schema checks and additive migrations after FreePBX creates the
+ * declared module tables.
  */
 final class SchemaMigrator
 {
