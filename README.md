@@ -10,17 +10,18 @@ an integration starting point, not a releasable package. The BMO installation
 hook intentionally rejects installation. The schema still needs a verified
 unique index on group extension before the guard can be removed.
 
-This initial foundation contains a standalone group validator, transactional
-group repository, and in-memory session state model. These are not a substitute
-for a concurrency-safe controller:
-the eventual controller must serialize events, atomically lock each group,
+The foundation contains a group validator, transactional repository, session
+model, and a transport-independent session controller. The controller orders
+effects and handles duplicate events, but it has no Asterisk effects adapter.
+The eventual runtime must serialize events, atomically lock each group,
 coordinate actual Asterisk operation completion, and clean up calls on failure.
-The state model deliberately does not perform I/O.
+The controller is tested with a fake adapter only.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
 ```sh
 php tests/run.php
+php tests/controller.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
