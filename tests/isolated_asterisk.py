@@ -58,6 +58,7 @@ def main():
         mute_capture = root / "mute-receiver.wav"
         auto_capture = root / "automatic-receiver.wav"
         concurrent_captures = [root / "concurrent-1.wav", root / "concurrent-2.wav"]
+        setup_capture = root / "originated-receiver.wav"
         lock_dir = root / "locks"
         lock_dir.mkdir(mode=0o700)
         config = root / "asterisk.conf"
@@ -111,6 +112,12 @@ def main():
             "[general]\nstatic=yes\nwriteprotect=yes\n"
             "[advancedpaging-lab]\n"
             "exten => unanswered,1,Wait(15)\n"
+            " same => n,Hangup()\n"
+            f"exten => answer,1,MixMonitor({setup_capture})\n"
+            " same => n,Answer()\n"
+            " same => n,Wait(30)\n"
+            " same => n,Hangup()\n"
+            "exten => setup-caller,1,ConfBridge(ap-ffffffffffffffffffffffffffffffff,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             f"exten => receiver,1,MixMonitor({capture})\n"
             " same => n,ConfBridge(ap-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,test_bridge,test_user)\n"
@@ -385,6 +392,37 @@ def main():
             print(origination.stdout.strip())
             if "Local/unanswered@advancedpaging-lab" in cli("core show channels concise"):
                 raise RuntimeError("Cancelled Local origination left a channel behind.")
+
+            cli("channel originate Local/setup-caller@advancedpaging-lab application Wait 12")
+            setup_room = "ap-" + "f" * 32
+            deadline = time.monotonic() + 4
+            while True:
+                participants = cli("confbridge list " + setup_room)
+                caller_match = re.search(r"Local/setup-caller@advancedpaging-lab-[0-9a-fA-F]{8};2", participants)
+                if caller_match:
+                    break
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Setup caller did not join: " + participants)
+                time.sleep(0.1)
+            setup_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+                             AP_LAB_CONFERENCE=setup_room, AP_LAB_CALLER=caller_match.group(),
+                             AP_LAB_CALLER_ID=channel_unique_id(caller_match.group()), AP_LAB_LOCK_DIR=str(lock_dir))
+            setup = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_setup.php")],
+                env=setup_env, capture_output=True, text=True, timeout=27,
+            )
+            if setup.returncode:
+                log.flush()
+                log.seek(0)
+                raise RuntimeError("Originated setup failed: " + setup.stderr + setup.stdout + "\n" + log.read()[-16000:])
+            print(setup.stdout.strip())
+            with wave.open(str(setup_capture), "rb") as recorded:
+                frames = recorded.readframes(recorded.getnframes())
+            samples = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+            setup_tone = sum(1 for sample in samples if abs(sample) > 1000)
+            if setup_tone < 14000:
+                raise RuntimeError(f"Originated receiver closing playback was truncated: {setup_tone} samples.")
+            print(f"Originated receiver captured {setup_tone} audible-amplitude samples.")
 
             for name, duration in (("conc1-receiver", 35), ("conc2-receiver", 35),
                                    ("conc1-caller", 6), ("conc2-caller", 11)):

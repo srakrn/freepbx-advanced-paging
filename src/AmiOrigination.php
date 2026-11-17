@@ -23,6 +23,7 @@ final class AmiOrigination
     private string $primaryId;
     private string $peerId;
     private bool $local;
+    private string $conference = '';
     private bool $submitted = false;
     private bool $responseSeen = false;
     private ?string $response = null;
@@ -61,6 +62,7 @@ final class AmiOrigination
         if (!$this->local && !preg_match('/^PJSIP\/[A-Za-z0-9_.-]+$/D', $target)) {
             throw new InvalidArgumentException('Invalid internal endpoint.');
         }
+        $this->conference = $conference;
         $headers = [
             'Action' => 'Originate',
             'ActionID' => $this->actionId,
@@ -80,6 +82,38 @@ final class AmiOrigination
         // Mark before writing: an AMI transport failure has an uncertain result.
         $this->submitted = true;
         $this->ami->request($headers);
+    }
+
+    public function submitted(): bool
+    {
+        return $this->submitted;
+    }
+
+    /**
+     * Hand a successfully joined receiver and its known Local peer to the
+     * resource registry. Returns null for an event belonging to another call.
+     */
+    public function joinedChannels(array $event): ?array
+    {
+        if (($event['Event'] ?? '') !== 'ConfbridgeJoin'
+            || ($event['Conference'] ?? '') !== $this->conference
+            || ($event['Uniqueid'] ?? '') !== $this->primaryId) {
+            return null;
+        }
+        $entry = $this->channels[$this->primaryId] ?? null;
+        if ($entry === null || $entry['ended'] || ($event['Channel'] ?? '') !== $entry['channel']) {
+            throw new RuntimeException('Joined receiver channel was not tracked.');
+        }
+        if ($this->local && (!isset($this->channels[$this->peerId]) || $this->channels[$this->peerId]['ended'])) {
+            throw new RuntimeException('Joined Local receiver peer was not tracked.');
+        }
+        $result = [];
+        foreach ($this->channels as $id => $channel) {
+            if (!$channel['ended']) {
+                $result[$channel['channel']] = $id;
+            }
+        }
+        return $result;
     }
 
     public function matches(array $event): bool

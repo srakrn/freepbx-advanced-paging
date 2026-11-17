@@ -4,6 +4,7 @@ namespace FreePBX\modules;
 
 use AdvancedPaging\GroupRepository;
 use AdvancedPaging\GroupValidator;
+use AdvancedPaging\EndpointResolver;
 use BMO;
 use InvalidArgumentException;
 use PDO;
@@ -11,6 +12,7 @@ use RuntimeException;
 
 require_once __DIR__ . '/src/GroupRepository.php';
 require_once __DIR__ . '/src/GroupValidator.php';
+require_once __DIR__ . '/src/EndpointResolver.php';
 
 /**
  * Development-only FreePBX adapter. The install guard prevents accidental
@@ -48,6 +50,27 @@ final class Advancedpaging implements BMO
     public function getGroup(int $id): ?array
     {
         return $this->groups->get($id);
+    }
+
+    /** Resolve a session snapshot using Core and AstDB, never from-internal. */
+    public function resolveEligibleDevices(array $members, string $callerExtension, string $callerDevice): array
+    {
+        $manager = $this->freepbx->astman;
+        if (!$manager->connected()) {
+            throw new RuntimeException('Asterisk manager is unavailable.');
+        }
+        $resolver = new EndpointResolver(
+            function (): array { return $this->freepbx->Core->getAllUsers(); },
+            static function (string $extension) use ($manager) {
+                return $manager->database_get('AMPUSER', $extension . '/device');
+            },
+            function (string $device): array { return $this->freepbx->Core->getDevice($device); },
+            static function (string $endpoint) use ($manager): string {
+                $result = $manager->GetVar(null, 'DEVICE_STATE(' . $endpoint . ')');
+                return ($result['Response'] ?? '') === 'Success' ? (string) ($result['Value'] ?? '') : '';
+            }
+        );
+        return $resolver->resolve($members, $callerExtension, $callerDevice);
     }
 
     public function saveGroup(array $input, ?int $id = null): int

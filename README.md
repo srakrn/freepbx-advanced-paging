@@ -18,11 +18,12 @@ coordinate actual Asterisk operation completion, and clean up calls on failure.
 An initial AMI effects adapter, synchronous connection, playback driver,
 known-channel resource registry, shared event router, and process-held per-group
 locks exist. An experimental AMI origination tracker preassigns channel
-identifiers and waits for cancellation evidence; it is not yet connected to
-the runtime or FreePBX endpoint selection. Production origination, runtime
-supervision and reconnection, crash reconciliation, and FreePBX dialplan
-integration remain incomplete. An OS lock alone does not clean up channels
-after a controller crash.
+identifiers, feeds the session event router, and waits for cancellation
+evidence. An initial FreePBX Core/AstDB resolver excludes the caller and
+non-idle devices. The resolver and origination path are not yet integrated
+into a production runtime; the PJSIP pre-dial context, runtime supervision and
+reconnection, crash reconciliation, and FreePBX dialplan integration remain
+incomplete. An OS lock alone does not clean up channels after a crash.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
@@ -33,6 +34,7 @@ php tests/asterisk_effects.php
 php tests/ami_resources.php
 php tests/group_lock.php
 php tests/origination.php
+php tests/endpoint_resolver.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -52,9 +54,11 @@ capture. A separate scenario exercises the session controller and event pump:
 caller hangup triggers closing playback and receiver cleanup. A second
 scenario routes two concurrent sessions through one AMI connection and
 exercises real per-group locks. A separate test cancels an unanswered
-AMI-originated Local channel and confirms that both Local legs ended.
-The full session tests still inject already-joined channels; they do **not**
-verify production origination, failure recovery, PJSIP, or the module.
+AMI-originated Local channel and confirms that both Local legs ended. Another
+scenario originates an answering Local receiver and an unanswered receiver,
+cancels the unanswered call at setup close, then checks automatic closing audio
+and cleanup. The tests do **not** verify FreePBX endpoint resolution on actual
+phones, production failure recovery, PJSIP auto-answer, or the module.
 On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 

@@ -33,8 +33,8 @@ final class SessionEventLoop
         string $initiatorId,
         array $receivers
     ) {
-        if ($initiator === '' || $initiatorId === '' || !$receivers) {
-            throw new InvalidArgumentException('Session channels are required.');
+        if ($initiator === '' || $initiatorId === '') {
+            throw new InvalidArgumentException('Initiator identity is required.');
         }
         foreach ($receivers as $channel => $uniqueId) {
             if (!is_string($channel) || $channel === '' || $channel === $initiator
@@ -54,6 +54,13 @@ final class SessionEventLoop
     /** Channels must already be joined, muted, and owned by this session. */
     public function start(): void
     {
+        $this->startConnecting();
+        $this->finishSetup();
+    }
+
+    /** Start with the initiator already connected and muted. */
+    public function startConnecting(): void
+    {
         if ($this->started) {
             throw new InvalidArgumentException('Session already started.');
         }
@@ -65,6 +72,14 @@ final class SessionEventLoop
         $this->controller->start();
         foreach ($this->receivers as $channel => $id) {
             $this->controller->receiverJoined($channel);
+        }
+    }
+
+    /** Close the finite setup window after dispatching participant events. */
+    public function finishSetup(): void
+    {
+        if (!$this->started) {
+            throw new InvalidArgumentException('Session has not started.');
         }
         $this->controller->setupFinished();
     }
@@ -80,7 +95,7 @@ final class SessionEventLoop
         }
         try {
             $event = $this->ami->waitForEvent(static function (array $event): bool {
-                return in_array($event['Event'] ?? '', ['Hangup', 'UserEvent'], true);
+                return in_array($event['Event'] ?? '', ['Hangup', 'UserEvent', 'Newchannel', 'OriginateResponse', 'ConfbridgeJoin'], true);
             }, $timeout);
             if ($event !== null) {
                 $this->dispatch($event);
@@ -98,8 +113,15 @@ final class SessionEventLoop
         if (!$this->started || $this->controller->state() === Session::TERMINATED) {
             return;
         }
+        $this->resources->observe($event);
+        if (($event['Event'] ?? '') === 'ConfbridgeJoin') {
+            $joined = $this->resources->adoptJoined($event);
+            if ($joined !== null) {
+                $this->receivers[$joined] = $event['Uniqueid'];
+                $this->controller->receiverJoined($joined);
+            }
+        }
         if (($event['Event'] ?? '') === 'Hangup') {
-            $this->resources->observe($event);
             $channel = $event['Channel'] ?? '';
             $uniqueId = $event['Uniqueid'] ?? '';
             if ($channel === $this->initiator && $uniqueId === $this->initiatorId) {

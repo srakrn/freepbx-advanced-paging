@@ -83,6 +83,11 @@ final class SessionController
         return $this->cleanupErrors;
     }
 
+    public function receiverCount(): int
+    {
+        return count($this->receivers);
+    }
+
     /** The transport must attach the initiator muted before setup begins. */
     public function start(): void
     {

@@ -31,7 +31,7 @@ final class SessionEventRouter
     public function pump(float $timeout): void
     {
         $event = $this->ami->waitForEvent(static function (array $event): bool {
-            return in_array($event['Event'] ?? '', ['Hangup', 'UserEvent'], true);
+            return in_array($event['Event'] ?? '', ['Hangup', 'UserEvent', 'Newchannel', 'OriginateResponse', 'ConfbridgeJoin'], true);
         }, $timeout);
         foreach ($this->sessions as $id => $session) {
             if ($event !== null) {
