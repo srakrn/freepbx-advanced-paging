@@ -109,4 +109,44 @@ final class GroupRepository
             throw $error;
         }
     }
+
+    /**
+     * Insert prevalidated backup groups as one transaction. Never overwrites
+     * existing groups. Requires transactional tables and a unique extension
+     * index to protect against concurrent inserts.
+     *
+     * @return int[] New local group IDs.
+     */
+    public function insertMany(array $groups): array
+    {
+        if (!$groups) {
+            return [];
+        }
+        $this->db->beginTransaction();
+        try {
+            $insert = $this->db->prepare(
+                'INSERT INTO advancedpaging_groups (name, extension, enabled, audio_mode, pre_recording_id, post_recording_id) VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            $member = $this->db->prepare('INSERT INTO advancedpaging_members (group_id, extension) VALUES (?, ?)');
+            $ids = [];
+            foreach ($groups as $group) {
+                $insert->execute([
+                    $group['name'], $group['extension'], (int) $group['enabled'], $group['audio_mode'],
+                    $group['pre_recording_id'], $group['post_recording_id'],
+                ]);
+                $id = (int) $this->db->lastInsertId();
+                foreach ($group['members'] as $extension) {
+                    $member->execute([$id, $extension]);
+                }
+                $ids[] = $id;
+            }
+            $this->db->commit();
+            return $ids;
+        } catch (Throwable $error) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $error;
+        }
+    }
 }

@@ -12,7 +12,7 @@ MariaDB, but it is not yet invoked by the guarded installation hook.
 
 The foundation contains a group validator, transactional repository, session
 model, and a transport-independent session controller. The controller orders
-effects and handles duplicate events, but it has no Asterisk effects adapter.
+effects and handles duplicate events.
 The eventual runtime must serialize events, atomically lock each group,
 coordinate actual Asterisk operation completion, and clean up calls on failure.
 An initial AMI effects adapter, synchronous connection, playback driver,
@@ -53,6 +53,7 @@ php tests/freepbx_snapshot_adapter.php
 php tests/admin_page.php
 php tests/page_access.php
 php tests/schema.php
+php tests/backup_restore.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -98,6 +99,12 @@ a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate
 that a particular phone firmware honors those headers. It also does not verify
 FreePBX endpoint resolution on actual phones, production failure recovery,
 device-specific paging settings, or the module.
+
+Backup and restore hooks export group configuration and declare Core and
+System Recordings dependencies. Restore creates groups transactionally and
+rejects conflicts rather than overwriting existing groups. Referenced extensions
+and recording IDs must already exist. The hooks have been tested with mock
+FreePBX backup adapters and isolated databases, not a real FreePBX backup job.
 
 On Asterisk 22.11, asynchronous AMI Originate was observed not to run
 `PreDialGoSub`. PJSIP calls therefore use a module-owned Local-channel wrapper
