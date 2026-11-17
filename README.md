@@ -61,9 +61,18 @@ AMI-originated Local channel and confirms that both Local legs ended. Another
 scenario originates an answering Local receiver and an unanswered receiver,
 cancels the unanswered call at setup close, then checks automatic closing audio
 and cleanup. Worker dialplan is rendered using the installed FreePBX command
-classes. The tests do **not** verify FreePBX endpoint resolution on actual
-phones, production failure recovery, actual SIP auto-answer signalling,
+classes. A synthetic loopback PJSIP endpoint also receives an INVITE with
+FreePBX's default Alert-Info and Call-Info headers, answers, joins, and receives
+a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate
+that a particular phone firmware honors those headers. It also does not verify
+FreePBX endpoint resolution on actual phones, production failure recovery,
 device-specific paging settings, or the module.
+
+On Asterisk 22.11, asynchronous AMI Originate was observed not to run
+`PreDialGoSub`. PJSIP calls therefore use a module-owned Local-channel wrapper
+and `Dial()`'s callee-side pre-dial hook. The isolated test uses the installed
+FreePBX `autoanswer`, `func-set-sipheader`, and `func-apply-sipheaders`
+contexts, with a test stub for the P-series helper.
 On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 

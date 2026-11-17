@@ -20,6 +20,7 @@ import socket
 import struct
 import subprocess
 import tempfile
+import threading
 import time
 import wave
 
@@ -61,6 +62,64 @@ def main():
         setup_capture = root / "originated-receiver.wav"
         lock_dir = root / "locks"
         lock_dir.mkdir(mode=0o700)
+        sip_peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sip_peer.bind(("127.0.0.1", 0))
+        sip_peer.settimeout(0.2)
+        peer_port = sip_peer.getsockname()[1]
+        rtp_peer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        rtp_peer.bind(("127.0.0.1", 0))
+        rtp_port = rtp_peer.getsockname()[1]
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.bind(("127.0.0.1", 0))
+            asterisk_sip_port = probe.getsockname()[1]
+        sip_stop = threading.Event()
+        received_invites = []
+        received_byes = []
+
+        def sip_endpoint():
+            while not sip_stop.is_set():
+                try:
+                    data, address = sip_peer.recvfrom(65535)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    return
+                text = data.decode("utf-8", errors="replace")
+                lines = text.split("\r\n")
+                method = lines[0].split(" ", 1)[0]
+                if method not in ("INVITE", "BYE", "CANCEL", "OPTIONS"):
+                    continue
+                headers = {}
+                for line in lines[1:]:
+                    if ":" in line:
+                        key, value = line.split(":", 1)
+                        headers.setdefault(key.lower(), []).append(value.strip())
+                if method == "INVITE":
+                    received_invites.append(text)
+                elif method == "BYE":
+                    received_byes.append(text)
+                if not all(key in headers for key in ("via", "from", "to", "call-id", "cseq")):
+                    continue
+                to_header = headers["to"][0]
+                if "tag=" not in to_header.lower():
+                    to_header += ";tag=aplab"
+                body = ""
+                if method == "INVITE":
+                    body = (f"v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=aplab\r\n"
+                            f"c=IN IP4 127.0.0.1\r\nt=0 0\r\n"
+                            f"m=audio {rtp_port} RTP/AVP 0\r\na=rtpmap:0 PCMU/8000\r\na=sendrecv\r\n")
+                response = "SIP/2.0 200 OK\r\n"
+                response += "".join(f"Via: {value}\r\n" for value in headers["via"])
+                response += (f"From: {headers['from'][0]}\r\nTo: {to_header}\r\n"
+                             f"Call-ID: {headers['call-id'][0]}\r\nCSeq: {headers['cseq'][0]}\r\n"
+                             f"Contact: <sip:aptestphone@127.0.0.1:{peer_port}>\r\n")
+                if body:
+                    response += "Content-Type: application/sdp\r\n"
+                response += f"Content-Length: {len(body.encode())}\r\n\r\n{body}"
+                sip_peer.sendto(response.encode(), address)
+
+        sip_thread = threading.Thread(target=sip_endpoint, daemon=True)
+        sip_thread.start()
         config = root / "asterisk.conf"
         config.write_text(
             "[directories]\n"
@@ -90,10 +149,29 @@ def main():
             "load=res_clioriginate.so\n"
             "load=app_confbridge.so\n"
             "load=app_waitforring.so\n"
+            "load=app_dial.so\n"
+            "load=app_stack.so\n"
+            "load=app_exec.so\n"
+            "load=app_while.so\n"
             "load=app_playback.so\n"
             "load=app_userevent.so\n"
             "load=app_mixmonitor.so\n"
             "load=format_wav.so\n"
+            "load=res_pjproject.so\n"
+            "load=res_sorcery_config.so\n"
+            "load=res_sorcery_memory.so\n"
+            "load=res_sorcery_astdb.so\n"
+            "load=res_rtp_asterisk.so\n"
+            "load=res_pjsip.so\n"
+            "load=res_pjsip_session.so\n"
+            "load=res_pjsip_pubsub.so\n"
+            "load=res_pjsip_sdp_rtp.so\n"
+            "load=res_pjsip_header_funcs.so\n"
+            "load=chan_pjsip.so\n"
+            "load=func_strings.so\n"
+            "load=func_logic.so\n"
+            "load=func_cut.so\n"
+            "load=func_channel.so\n"
         )
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
@@ -108,10 +186,23 @@ def main():
             "[test_user]\ntype=user\nquiet=yes\n"
             "[test_sender]\ntype=user\nquiet=yes\nstartmuted=yes\n"
         )
+        (root / "etc/pjsip.conf").write_text(
+            f"[transport-aplab]\ntype=transport\nprotocol=udp\nbind=127.0.0.1:{asterisk_sip_port}\n"
+            "[aptestphone]\ntype=endpoint\ntransport=transport-aplab\ncontext=advancedpaging-lab\n"
+            "disallow=all\nallow=ulaw\naors=aptestphone\ndirect_media=no\n"
+            f"[aptestphone]\ntype=aor\ncontact=sip:aptestphone@127.0.0.1:{peer_port}\n"
+        )
         worker_dialplan = subprocess.run(
             ["php", str(pathlib.Path(__file__).parent / "render_worker_dialplan.php")],
             capture_output=True, text=True, timeout=8, check=True,
         ).stdout
+        freepbx_dialplan = pathlib.Path("/etc/asterisk/extensions_additional.conf").read_text()
+        autoanswer_contexts = ""
+        for name in ("autoanswer", "func-set-sipheader", "func-apply-sipheaders"):
+            found = re.search(rf"(?ms)^\[{re.escape(name)}\]\n.*?(?=^\[|\Z)", freepbx_dialplan)
+            if not found:
+                raise RuntimeError("Installed FreePBX auto-answer context is missing: " + name)
+            autoanswer_contexts += found.group()
         (root / "etc/extensions.conf").write_text(
             "[general]\nstatic=yes\nwriteprotect=yes\n"
             "[advancedpaging-lab]\n"
@@ -151,6 +242,8 @@ def main():
             "exten => conc2-caller,1,ConfBridge(ap-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             + worker_dialplan
+            + autoanswer_contexts
+            + "\n[sub-check-pseries]\nexten => s,1,Return()\n"
         )
         log = (root / "server.log").open("w+")
         process = subprocess.Popen(
@@ -182,7 +275,13 @@ def main():
                     log.seek(0)
                     raise RuntimeError("Isolated dialplan unavailable:\n" + dialplan + "\n" + log.read())
                 time.sleep(0.1)
-            version = cli("core show version")
+            while True:
+                version = cli("core show version")
+                if version.startswith("Asterisk "):
+                    break
+                if process.poll() is not None or time.monotonic() > deadline:
+                    raise RuntimeError("Isolated Asterisk CLI not ready: " + version)
+                time.sleep(0.1)
             modules = cli("module show like app_confbridge")
             if "Running" not in modules:
                 raise RuntimeError("ConfBridge did not load: " + modules)
@@ -419,6 +518,34 @@ def main():
                 raise RuntimeError(f"Originated receiver closing playback was truncated: {setup_tone} samples.")
             print(f"Originated receiver captured {setup_tone} audible-amplitude samples.")
 
+            pjsip_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+                             AP_LAB_CONFERENCE="ap-" + "1" * 32)
+            pjsip = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_pjsip.php")],
+                env=pjsip_env, capture_output=True, text=True, timeout=20,
+            )
+            if pjsip.returncode:
+                log.flush()
+                log.seek(0)
+                details = log.read()
+                raise RuntimeError("Synthetic PJSIP test failed: " + pjsip.stderr + pjsip.stdout
+                                   + "\nPJSIP modules:\n" + cli("module show like pjsip")
+                                   + "\nstartup:\n" + details[:14000] + "\nlast:\n" + details[-3000:])
+            if not received_invites:
+                raise RuntimeError("Synthetic phone did not receive an INVITE.")
+            if not received_byes:
+                raise RuntimeError("Synthetic phone did not receive a BYE during cleanup.")
+            invite = received_invites[-1].lower()
+            if "alert-info:" not in invite or "ring answer" not in invite or "call-info:" not in invite or "answer-after=0" not in invite:
+                log.flush()
+                log.seek(0)
+                trace = "\n".join(line for line in log.read().splitlines() if any(
+                    word in line for word in ("advancedpaging-predial", "autoanswer", "sipheader", "PJSIP/aptestphone", "WARNING", "ERROR")
+                ))[-8000:]
+                raise RuntimeError("Expected FreePBX auto-answer headers were not sent: " + received_invites[-1] + "\n" + trace)
+            print(pjsip.stdout.strip())
+            print("Synthetic PJSIP phone received FreePBX auto-answer headers and a cleanup BYE.")
+
             for name, duration in (("conc1-receiver", 35), ("conc2-receiver", 35),
                                    ("conc1-caller", 6), ("conc2-caller", 11)):
                 cli(f"channel originate Local/{name}@advancedpaging-lab application Wait {duration}")
@@ -467,6 +594,10 @@ def main():
                     process.kill()
                     process.wait()
             log.close()
+            sip_stop.set()
+            sip_peer.close()
+            rtp_peer.close()
+            sip_thread.join(timeout=2)
 
 
 if __name__ == "__main__":

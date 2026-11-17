@@ -33,7 +33,7 @@ final class TestDialplanCollector
 $ext = new TestDialplanCollector();
 advancedpaging_get_config('asterisk');
 $output = $ext->render();
-foreach (['advancedpaging-receiver', 'advancedpaging-inject', 'advancedpaging-player', 'advancedpaging-predial'] as $context) {
+foreach (['advancedpaging-receiver', 'advancedpaging-inject', 'advancedpaging-player', 'advancedpaging-predial', 'advancedpaging-dial'] as $context) {
     if (strpos($output, '[' . $context . ']') === false) {
         throw new RuntimeException('Missing generated context: ' . $context);
     }

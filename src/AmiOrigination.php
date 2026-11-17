@@ -57,16 +57,19 @@ final class AmiOrigination
             || $timeoutMs < 1000 || $timeoutMs > 60000) {
             throw new InvalidArgumentException('Invalid origination request.');
         }
-        $this->local = $allowLocalForTests
+        $testLocal = $allowLocalForTests
             && (bool) preg_match('/^Local\/[A-Za-z0-9_-]+@[A-Za-z0-9_-]+\/n$/D', $target);
-        if (!$this->local && !preg_match('/^PJSIP\/[A-Za-z0-9_.-]+$/D', $target)) {
+        if (!$testLocal && !preg_match('/^PJSIP\/[A-Za-z0-9_.-]+$/D', $target)) {
             throw new InvalidArgumentException('Invalid internal endpoint.');
         }
+        // Async AMI Originate on Asterisk 22 does not apply PreDialGoSub.
+        // A Local wrapper uses Dial's callee-side b() hook instead.
+        $this->local = true;
         $this->conference = $conference;
         $headers = [
             'Action' => 'Originate',
             'ActionID' => $this->actionId,
-            'Channel' => $target,
+            'Channel' => $testLocal ? $target : 'Local/s@advancedpaging-dial/n',
             'Context' => 'advancedpaging-receiver',
             'Exten' => 's',
             'Priority' => 1,
@@ -76,14 +79,15 @@ final class AmiOrigination
             'OtherChannelId' => $this->peerId,
             'Variable' => ['__AP_CONF=' . $conference, '__AP_ORIGINATION_ID=' . $this->id],
         ];
-        if (!$this->local) {
+        if (!$testLocal) {
             if (!array_key_exists('ALERTINFO', $autoAnswer) || !array_key_exists('CALLINFO', $autoAnswer)
                 || !is_string($autoAnswer['ALERTINFO']) || !is_string($autoAnswer['CALLINFO'])) {
                 throw new InvalidArgumentException('FreePBX auto-answer settings are required.');
             }
             $headers['Variable'][] = '__AP_ALERTINFO=' . AutoAnswerSettings::validate($autoAnswer['ALERTINFO']);
             $headers['Variable'][] = '__AP_CALLINFO=' . AutoAnswerSettings::validate($autoAnswer['CALLINFO']);
-            $headers['PreDialGoSub'] = 'advancedpaging-predial,s,1';
+            $headers['Variable'][] = '__AP_DEVICE=' . substr($target, strlen('PJSIP/'));
+            $headers['Variable'][] = '__AP_DIAL_TIMEOUT=' . (int) ceil($timeoutMs / 1000);
         }
         // Mark before writing: an AMI transport failure has an uncertain result.
         $this->submitted = true;

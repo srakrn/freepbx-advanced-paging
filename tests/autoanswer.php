@@ -27,10 +27,11 @@ $ami = new HeaderAmi();
 $origin = new AmiOrigination($ami);
 $origin->start('PJSIP/101', 'ap-' . str_repeat('a', 32), 5000, false, $settings);
 $action = $ami->requests[0];
-if (($action['PreDialGoSub'] ?? '') !== 'advancedpaging-predial,s,1'
+if (($action['Channel'] ?? '') !== 'Local/s@advancedpaging-dial/n'
+    || !in_array('__AP_DEVICE=101', $action['Variable'], true)
     || !in_array('__AP_ALERTINFO=Ring Answer', $action['Variable'], true)
     || !in_array('__AP_CALLINFO=<uri>;answer-after=0', $action['Variable'], true)) {
-    throw new RuntimeException('PJSIP auto-answer was not supplied to the pre-dial hook.');
+    throw new RuntimeException('PJSIP auto-answer was not supplied to the Local dial wrapper.');
 }
 foreach (["foo\r\nInjected: value", '${SHELL(foo)}', 'test,other'] as $unsafe) {
     try {

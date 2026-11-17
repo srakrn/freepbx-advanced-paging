@@ -43,6 +43,10 @@ function advancedpaging_get_config($engine)
     $context = 'advancedpaging-predial';
     $ext->add($context, 's', '', new ext_gosub('1', 's', 'autoanswer', '${AP_ALERTINFO},${AP_CALLINFO}'));
     $ext->add($context, 's', '', new ext_return());
+
+    $context = 'advancedpaging-dial';
+    $ext->add($context, 's', '', new ext_dial('PJSIP/${AP_DEVICE}', '${AP_DIAL_TIMEOUT},b(advancedpaging-predial^s^1)'));
+    $ext->add($context, 's', '', new ext_hangup());
 }
 
 /**
