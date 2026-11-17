@@ -23,6 +23,20 @@ Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 php tests/run.php
 ```
 
+An isolated Asterisk lifecycle experiment is available on a Linux system with
+the Asterisk binary, modules and XML documentation installed:
+
+```sh
+python3 tests/isolated_asterisk.py
+```
+
+It starts a second Asterisk process with temporary configuration and its own
+socket, using only Local channels, and tears it down afterwards. It exercises
+receiver survival after initiator hangup and a timed Playback injector followed
+by a kick. It does **not** verify received audio, mute behavior, automatic
+call control, PJSIP, or the production module. On `eich-pbx` the installed
+binary is 22.11.0 while the running PBX is 22.10.1.
+
 ## Platform investigation
 
 The FreePBX 17 Paging module uses `framework_check_extension_usage()` for
