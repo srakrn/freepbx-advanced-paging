@@ -41,6 +41,14 @@ final class Advancedpaging implements BMO
         $this->groups = new GroupRepository($freepbx->Database);
     }
 
+    /**
+     * The BMO config-page lifecycle calls this hook for every module page.
+     * Advanced Paging processes its page actions in the page controller.
+     */
+    public function doConfigPageInit($page): void
+    {
+    }
+
     public function install()
     {
         return $this->installAt('/etc/asterisk', '/run/advancedpaging', 'asterisk', 'asterisk');
@@ -69,6 +77,13 @@ final class Advancedpaging implements BMO
 
     public function uninstallAt(string $asteriskDirectory, string $runtimeDirectory, ?string $ownerUser, ?string $ownerGroup): bool
     {
+        try {
+            // systemd may remove RuntimeDirectory when stopping the service.
+            $this->ensureRuntimeDirectory($runtimeDirectory, $ownerUser, $ownerGroup);
+        } catch (\Throwable $error) {
+            freepbx_log(FPBX_LOG_ERROR, 'Advanced Paging uninstall could not prepare the runtime lock directory');
+            return false;
+        }
         $lock = GroupLock::tryAcquireRuntime($runtimeDirectory);
         if ($lock === null) {
             freepbx_log(FPBX_LOG_WARNING, 'Stop the Advanced Paging runtime before uninstalling the module');

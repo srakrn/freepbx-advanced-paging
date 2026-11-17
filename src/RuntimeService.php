@@ -71,16 +71,24 @@ final class RuntimeService
                 }
                 $bootstrap->close();
             } catch (Throwable $error) {
+                if ($this->stopping) {
+                    if ($bootstrap !== null) {
+                        // Signals can interrupt an AMI frame read. Reconcile
+                        // through a fresh connection before releasing locks.
+                        $cleanupAmi = ($this->connect)();
+                        try {
+                            $bootstrap->close($cleanupAmi);
+                        } finally {
+                            if ($cleanupAmi instanceof AmiConnection) {
+                                $cleanupAmi->close();
+                            }
+                        }
+                    }
+                    return;
+                }
                 // Do not log exception text: connection/authentication errors
                 // can contain sensitive configuration in third-party code.
                 ($this->log)('Advanced Paging runtime connection or recovery failed.');
-                if ($this->stopping) {
-                    if ($bootstrap !== null) {
-                        $bootstrap->close();
-                        return;
-                    }
-                    throw $error;
-                }
                 if (++$failures >= 5) {
                     throw new RuntimeException('Repeated Advanced Paging runtime failures.', 0, $error);
                 }

@@ -1,11 +1,16 @@
 <module>
     <rawname>advancedpaging</rawname>
     <name>Advanced Paging</name>
-    <version>17.0.0alpha1</version>
+    <version>17.0.0alpha3</version>
     <publisher>Advanced Paging contributors</publisher>
     <license>GPLv3+</license>
     <category>Applications</category>
-    <description>Development preview; paging call control is not implemented. Do not install.</description>
+    <description>Configurable paging groups with lifecycle announcements and simplex or duplex audio.</description>
+    <changelog>
+        *17.0.0alpha3* Add the BMO config-page initialization hook; reconcile shutdown using a fresh AMI connection.
+        *17.0.0alpha2* Reduce setup delay after first receiver answers; resolve registered PJSIP contacts and Paging auto-answer overrides.
+        *17.0.0alpha1* Initial development preview.
+    </changelog>
     <depends>
         <version>17.0.1</version>
         <module>core ge 17.0.1</module>

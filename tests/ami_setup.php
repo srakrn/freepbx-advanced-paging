@@ -39,16 +39,22 @@ if ($id === null || $runtime->start(3, $room, $caller, $callerId, 'duplex', null
 $controller = $runtime->controller($id);
 $sawPost = false;
 $sawActive = false;
+$setupStarted = microtime(true);
+$activeDelay = null;
 $deadline = microtime(true) + 20;
 while ($runtime->count() && microtime(true) < $deadline) {
     $runtime->pump(1.0);
     if ($controller->state() === Session::ACTIVE && $controller->receiverCount() === 1) {
         $sawActive = true;
+        $activeDelay ??= microtime(true) - $setupStarted;
     }
     $sawPost = $sawPost || $controller->state() === Session::POST_PAGE;
 }
 if ($runtime->count() || !$sawPost || !$sawActive) {
     throw new RuntimeException('Originated session did not terminate: ' . $controller->state() . ' ' . json_encode($controller->cleanupErrors()));
+}
+if ($activeDelay === null || $activeDelay >= 2.0) {
+    throw new RuntimeException('Paging setup grace delayed activation: ' . (string) $activeDelay . ' seconds.');
 }
 $reacquired = GroupLock::tryAcquire($lockDir, 3);
 if ($reacquired === null) {
@@ -56,4 +62,4 @@ if ($reacquired === null) {
 }
 $reacquired->release();
 fclose($socket);
-echo "Runtime enforced group busy, started receiver, cancelled unanswered attempt, and completed hangup cleanup.\n";
+echo sprintf("Runtime enforced group busy, activated in %.2fs, cancelled unanswered attempt, and completed hangup cleanup.\n", $activeDelay);

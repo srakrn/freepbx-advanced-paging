@@ -44,6 +44,8 @@ try {
     if ($GLOBALS['reloads'] !== 1) {
         throw new RuntimeException('Install hook did not request configuration reload.');
     }
+    // systemd RuntimeDirectory cleanup removes this path on stop.
+    rmdir($run);
     if (!$module->uninstallAt($etc, $run, null, null)) {
         throw new RuntimeException('Module uninstall hook failed.');
     }

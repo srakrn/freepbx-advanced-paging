@@ -81,6 +81,7 @@ final class SessionRuntime
                 'loop' => $loop,
                 'controller' => $controller,
                 'deadline' => hrtime(true) / 1000000000 + $setupSeconds,
+                'firstReceiverDeadline' => null,
             ];
             $registered = true;
             $seenTargets = [];
@@ -145,6 +146,15 @@ final class SessionRuntime
         $this->router->dispatch($event);
         $now = hrtime(true) / 1000000000;
         foreach ($this->sessions as $id => $entry) {
+            if ($entry['controller']->state() === Session::CONNECTING
+                && $entry['controller']->receiverCount() > 0
+                && $entry['firstReceiverDeadline'] === null) {
+                // Start promptly after the first answer while allowing a
+                // short coalescing window for nearly simultaneous endpoints.
+                $entry['firstReceiverDeadline'] = $now + 0.4;
+                $entry['deadline'] = min($entry['deadline'], $entry['firstReceiverDeadline']);
+                $this->sessions[$id] = $entry;
+            }
             if ($entry['controller']->state() === Session::CONNECTING && $now >= $entry['deadline']) {
                 $entry['loop']->finishSetup();
             }

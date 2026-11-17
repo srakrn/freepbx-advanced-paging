@@ -77,12 +77,16 @@ final class RuntimeBootstrap
      * Stop calls and verify cleanup before releasing the singleton lock.
      * The service process must exit after close so all group locks are freed.
      */
-    public function close(): void
+    public function close(?AmiEventActions $cleanupAmi = null): void
     {
         if ($this->closed) {
             return;
         }
-        $this->recovery->recover();
+        if ($cleanupAmi === null) {
+            $this->recovery->recover();
+        } else {
+            (new CrashRecovery($cleanupAmi, $this->lock))->recover();
+        }
         $this->lock->release();
         $this->closed = true;
     }
