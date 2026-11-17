@@ -25,10 +25,17 @@ final class AmiConnection implements AmiEventActions
 
     public function request(array $headers): void
     {
-        if (empty($headers['Action']) || isset($headers['ActionID'])) {
+        if (empty($headers['Action'])) {
             throw new RuntimeException('Invalid AMI request.');
         }
-        $actionId = 'ap-' . bin2hex(random_bytes(12)) . '-' . ++$this->counter;
+        if (isset($headers['ActionID'])) {
+            $actionId = $headers['ActionID'];
+            if (!is_string($actionId) || !preg_match('/^ap-orig-[a-f0-9]{32}$/D', $actionId)) {
+                throw new RuntimeException('Invalid AMI action identifier.');
+            }
+        } else {
+            $actionId = 'ap-' . bin2hex(random_bytes(12)) . '-' . ++$this->counter;
+        }
         $headers['ActionID'] = $actionId;
         $request = '';
         foreach ($headers as $name => $value) {

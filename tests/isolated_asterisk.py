@@ -110,6 +110,8 @@ def main():
         (root / "etc/extensions.conf").write_text(
             "[general]\nstatic=yes\nwriteprotect=yes\n"
             "[advancedpaging-lab]\n"
+            "exten => unanswered,1,Wait(15)\n"
+            " same => n,Hangup()\n"
             f"exten => receiver,1,MixMonitor({capture})\n"
             " same => n,ConfBridge(ap-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
@@ -143,6 +145,9 @@ def main():
             "[advancedpaging-player]\n"
             "exten => s,1,Playback(${AP_SOUNDS})\n"
             " same => n,UserEvent(AdvancedPagingPlayback,PlaybackID:${AP_PLAYBACK_ID},Status:${PLAYBACKSTATUS})\n"
+            " same => n,Hangup()\n"
+            "[advancedpaging-receiver]\n"
+            "exten => s,1,ConfBridge(${AP_CONF},test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
         )
         log = (root / "server.log").open("w+")
@@ -366,6 +371,20 @@ def main():
             if automatic_tone < 14000:
                 raise RuntimeError(f"Automatic closing playback was truncated: {automatic_tone} samples.")
             print(f"Automatic receiver captured {automatic_tone} audible-amplitude samples.")
+
+            originate_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+                                 AP_LAB_CONFERENCE="ap-" + "f" * 32)
+            origination = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_origination.php")],
+                env=originate_env, capture_output=True, text=True, timeout=12,
+            )
+            if origination.returncode:
+                log.flush()
+                log.seek(0)
+                raise RuntimeError("Pending origination test failed: " + origination.stderr + origination.stdout + "\n" + log.read()[-12000:])
+            print(origination.stdout.strip())
+            if "Local/unanswered@advancedpaging-lab" in cli("core show channels concise"):
+                raise RuntimeError("Cancelled Local origination left a channel behind.")
 
             for name, duration in (("conc1-receiver", 35), ("conc2-receiver", 35),
                                    ("conc1-caller", 6), ("conc2-caller", 11)):
