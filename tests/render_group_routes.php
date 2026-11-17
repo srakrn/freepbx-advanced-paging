@@ -11,7 +11,7 @@ final class RouteCollector
 
     public function add($context, $extension, $label, $command): void
     {
-        $this->contexts[$context][$extension][] = $command->output();
+        $this->contexts[$context][$extension][] = [$label, $command->output()];
     }
 
     public function addInclude($context, $include): void
@@ -38,8 +38,12 @@ try {
 foreach ($ext->contexts as $context => $extensions) {
     echo '[' . $context . "]\n";
     foreach ($extensions as $extension => $commands) {
-        foreach ($commands as $index => $command) {
-            echo ($index === 0 ? 'exten => ' . $extension . ',1,' : ' same => n,') . $command . "\n";
+        foreach ($commands as $index => [$label, $command]) {
+            $priority = $index === 0 ? '1' : 'n';
+            if ($label !== '') {
+                $priority .= '(' . $label . ')';
+            }
+            echo ($index === 0 ? 'exten => ' . $extension . ',' : ' same => ') . $priority . ',' . $command . "\n";
         }
     }
 }

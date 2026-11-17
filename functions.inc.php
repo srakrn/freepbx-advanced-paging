@@ -78,15 +78,24 @@ function advancedpaging_generate_group_routes(array $groups)
         $ext->add('ext-advancedpaging', $extension, '', new ext_goto('1', $id, 'app-advancedpaging'));
         $context = 'app-advancedpaging';
         $ext->add($context, $id, '', new ext_set('AP_CONF', 'ap-${FILTER(0-9a-f,${UUID()})}'));
+        $ext->add($context, $id, '', new ext_set('AP_ADMITTED', '0'));
+        $ext->add($context, $id, '', new ext_set('AP_ADMISSION_TRIES', '0'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,startmuted)', 'yes'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_join_leave)', 'no'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_user_count)', 'no'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,wait_marked)', 'no'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,end_marked)', 'no'));
-        $ext->add($context, $id, '', new ext_answer());
         $ext->add($context, $id, '', new ext_userevent('AdvancedPagingStart',
             'GroupID:' . $id . ',Conference:${AP_CONF},CallerChannel:${CHANNEL},CallerUniqueid:${UNIQUEID}'));
+        // Do not answer or join without an explicit runtime admission.
+        // This is a setup watchdog, not a limit on an active session.
+        $ext->add($context, $id, 'admission', new ext_gotoif('$["${AP_ADMITTED}" = "1"]', 'admitted'));
+        $ext->add($context, $id, '', new ext_wait('0.1'));
+        $ext->add($context, $id, '', new ext_set('AP_ADMISSION_TRIES', '$[${AP_ADMISSION_TRIES} + 1]'));
+        $ext->add($context, $id, '', new ext_gotoif('$[${AP_ADMISSION_TRIES} < 30]', 'admission'));
+        $ext->add($context, $id, '', new ext_hangup('41'));
+        $ext->add($context, $id, 'admitted', new ext_answer());
         $ext->add($context, $id, '', new ext_confbridge('${AP_CONF}'));
         $ext->add($context, $id, '', new ext_hangup());
     }

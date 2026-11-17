@@ -16,10 +16,12 @@ use RuntimeException;
 final class GroupLock
 {
     private $handle;
+    private int $groupId;
 
-    private function __construct($handle)
+    private function __construct($handle, int $groupId)
     {
         $this->handle = $handle;
+        $this->groupId = $groupId;
     }
 
     public static function tryAcquire(string $directory, int $groupId): ?self
@@ -53,7 +55,12 @@ final class GroupLock
             fclose($handle);
             return null;
         }
-        return new self($handle);
+        return new self($handle, $groupId);
+    }
+
+    public function holds(int $groupId): bool
+    {
+        return $this->handle !== null && $this->groupId === $groupId;
     }
 
     public function release(): void

@@ -33,6 +33,11 @@ final class SessionEventRouter
         $event = $this->ami->waitForEvent(static function (array $event): bool {
             return in_array($event['Event'] ?? '', ['Hangup', 'UserEvent', 'Newchannel', 'OriginateResponse', 'ConfbridgeJoin'], true);
         }, $timeout);
+        $this->dispatch($event);
+    }
+
+    public function dispatch(?array $event): void
+    {
         foreach ($this->sessions as $id => $session) {
             if ($event !== null) {
                 $session->dispatch($event);

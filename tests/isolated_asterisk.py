@@ -524,6 +524,21 @@ def main():
                 raise RuntimeError(f"Originated receiver closing playback was truncated: {setup_tone} samples.")
             print(f"Originated receiver captured {setup_tone} audible-amplitude samples.")
 
+            # No controller is listening: the route must reject the caller
+            # before answer/ConfBridge instead of leaving an orphaned session.
+            cli("channel originate Local/8555@ext-advancedpaging application Wait 12")
+            deadline = time.monotonic() + 2
+            while "Local/8555@ext-advancedpaging" not in cli("core show channels concise"):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Unadmitted watchdog test channel did not appear.")
+                time.sleep(0.05)
+            deadline = time.monotonic() + 6
+            while "Local/8555@ext-advancedpaging" in cli("core show channels concise"):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Unadmitted caller survived the admission watchdog.")
+                time.sleep(0.1)
+            print("Unadmitted dialled caller disconnected by the setup watchdog.")
+
             routed_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
                               AP_LAB_LOCK_DIR=str(lock_dir))
             routed = subprocess.Popen(
@@ -535,6 +550,23 @@ def main():
                 if ready != "READY\n":
                     raise RuntimeError("Route runtime did not become ready: " + ready + routed.stderr.read())
                 cli("channel originate Local/8555@ext-advancedpaging application Wait 12")
+                deadline = time.monotonic() + 4
+                while "Local/answer@advancedpaging-lab" not in cli("core show channels concise"):
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("First routed session did not start.")
+                    time.sleep(0.1)
+                cli("channel originate Local/8555@ext-advancedpaging application Wait 12")
+                deadline = time.monotonic() + 2
+                while cli("core show channels concise").count("Local/8555@ext-advancedpaging") < 4:
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Second routed caller did not appear.")
+                    time.sleep(0.05)
+                deadline = time.monotonic() + 6
+                while cli("core show channels concise").count("Local/8555@ext-advancedpaging") > 2:
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Busy routed caller was not rejected by the watchdog.")
+                    time.sleep(0.1)
+                print("Second caller to the active group was rejected by the admission watchdog.")
                 stdout, stderr = routed.communicate(timeout=26)
                 if routed.returncode:
                     log.flush()

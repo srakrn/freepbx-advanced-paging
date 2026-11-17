@@ -46,7 +46,8 @@ final class SessionRuntime
         array $targets,
         array $autoAnswer,
         float $setupSeconds,
-        bool $allowLocalForTests = false
+        bool $allowLocalForTests = false,
+        ?GroupLock $reservation = null
     ): ?string {
         if ($setupSeconds < 1 || $setupSeconds > 60 || !$targets) {
             throw new InvalidArgumentException('Invalid receiver setup.');
@@ -56,7 +57,10 @@ final class SessionRuntime
                 throw new InvalidArgumentException('Invalid receiver target.');
             }
         }
-        $lock = GroupLock::tryAcquire($this->lockDirectory, $groupId);
+        if ($reservation !== null && !$reservation->holds($groupId)) {
+            throw new InvalidArgumentException('Invalid group reservation.');
+        }
+        $lock = $reservation ?? GroupLock::tryAcquire($this->lockDirectory, $groupId);
         if ($lock === null) {
             return null;
         }
@@ -94,8 +98,13 @@ final class SessionRuntime
                 // Keep the session and group lock registered if any uncertain
                 // AMI operation cannot yet be confirmed as cancelled.
                 $controller->terminate();
+                return $sessionId;
             } else {
-                $lock->release();
+                // A caller which already holds a reservation may already have
+                // been admitted; its admission owner must confirm hangup.
+                if ($reservation === null) {
+                    $lock->release();
+                }
             }
             throw $error;
         }
@@ -113,7 +122,16 @@ final class SessionRuntime
                 $timeout = min($timeout, max(0.0, $entry['deadline'] - $now));
             }
         }
-        $this->router->pump($timeout);
+        $event = $this->ami->waitForEvent(static function (array $event): bool {
+            return in_array($event['Event'] ?? '', ['Hangup', 'UserEvent', 'Newchannel', 'OriginateResponse', 'ConfbridgeJoin'], true);
+        }, $timeout);
+        $this->dispatch($event);
+    }
+
+    /** Dispatch an event already consumed by a shared admission loop. */
+    public function dispatch(?array $event): void
+    {
+        $this->router->dispatch($event);
         $now = hrtime(true) / 1000000000;
         foreach ($this->sessions as $id => $entry) {
             if ($entry['controller']->state() === Session::CONNECTING && $now >= $entry['deadline']) {

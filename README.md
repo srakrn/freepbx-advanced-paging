@@ -21,10 +21,12 @@ locks exist. An experimental AMI origination tracker preassigns channel
 identifiers, feeds the session event router, and waits for cancellation
 evidence. An initial FreePBX Core/AstDB resolver excludes the caller and
 non-idle devices. An in-process session runtime coordinates locking,
-origination, and setup deadlines after a caller has joined. The resolver is
-not yet integrated into a supervised production runtime. Runtime discovery,
-reconnection, crash reconciliation, and caller admission/watchdog remain
-incomplete. An experimental dialable group route generator exists but is
+origination, and setup deadlines after a caller has joined. An admission
+coordinator and pre-answer dialplan watchdog are exercised in isolation, but
+the resolver is not yet integrated into a supervised production runtime.
+Runtime process startup, reconnection, crash reconciliation, and recovery after
+an admitted caller or receiver is stranded remain incomplete. An experimental
+dialable group route generator exists but is
 intentionally not invoked by the FreePBX configuration hook; worker contexts
 are generated but not deployed. An OS lock alone does not clean up channels
 after a crash.
@@ -63,8 +65,10 @@ AMI-originated Local channel and confirms that both Local legs ended. Another
 scenario originates an answering Local receiver and an unanswered receiver,
 cancels the unanswered call at setup close, then checks automatic closing audio
 and cleanup. Worker dialplan is rendered using the installed FreePBX command
-classes. Another test dials an experimentally generated group route and hands
-its start event to a test launcher; this launcher is not a production service.
+classes. Another test dials an experimentally generated group route through the
+admission coordinator and a test launcher; the launcher is not a production
+service. The test checks that unacknowledged and same-group callers are
+rejected before conference admission.
 A synthetic loopback PJSIP endpoint also receives an INVITE with
 FreePBX's default Alert-Info and Call-Info headers, answers, joins, and receives
 a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate
