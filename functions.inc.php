@@ -15,7 +15,15 @@ function advancedpaging_get_config($engine)
     }
     global $ext;
     if (class_exists('\\FreePBX')) {
-        advancedpaging_generate_group_routes(\FreePBX::Advancedpaging()->listGroups());
+        $module = \FreePBX::Advancedpaging();
+        $groups = $module->listGroups();
+        foreach ($groups as &$group) {
+            $id = $group['instruction_recording_id'] ?? null;
+            $group['instruction_sounds'] = $id === null || $id === ''
+                ? '' : $module->getRecordingSoundList((string) $id);
+        }
+        unset($group);
+        advancedpaging_generate_group_routes($groups);
     }
 
     $context = 'advancedpaging-receiver';
@@ -26,6 +34,10 @@ function advancedpaging_get_config($engine)
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,wait_marked)', 'no'));
     $ext->add($context, 's', '', new ext_set('CONFBRIDGE(user,end_marked)', 'no'));
     $ext->add($context, 's', '', new ext_confbridge('${AP_CONF}'));
+    $ext->add($context, 's', '', new ext_hangup());
+
+    $context = 'advancedpaging-whisper';
+    $ext->add($context, 's', '', new ext_chanspy('${AP_SP_DEVICE}-', 'qW'));
     $ext->add($context, 's', '', new ext_hangup());
 
     $context = 'advancedpaging-inject';
@@ -71,18 +83,29 @@ function advancedpaging_generate_group_routes(array $groups)
             || !is_string($extension) || !preg_match('/^[0-9]{1,25}$/D', $extension)) {
             throw new InvalidArgumentException('Invalid paging group route.');
         }
-        $enabled[] = [$id, $extension];
+        $enabled[] = [$id, $extension, (string) ($group['instruction_sounds'] ?? '')];
     }
     if (!$enabled) {
         return;
     }
     $ext->addInclude('from-internal-noxfer-additional', 'ext-advancedpaging');
-    foreach ($enabled as [$id, $extension]) {
+    foreach ($enabled as [$id, $extension, $instruction]) {
         $ext->add('ext-advancedpaging', $extension, '', new ext_goto('1', $id, 'app-advancedpaging'));
         $context = 'app-advancedpaging';
         $ext->add($context, $id, '', new ext_set('AP_CONF', 'ap-${FILTER(0-9a-f,${UUID()})}'));
         $ext->add($context, $id, '', new ext_set('AP_ADMITTED', '0'));
         $ext->add($context, $id, '', new ext_set('AP_ADMISSION_TRIES', '0'));
+        if ($instruction !== '') {
+            foreach (explode('&', $instruction) as $sound) {
+                if ($sound === '' || strpos($sound, '..') !== false
+                    || !preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/D', $sound)) {
+                    throw new InvalidArgumentException('Invalid caller instruction sound.');
+                }
+            }
+            // The caller hears the instruction before the controller originates
+            // any receivers or joins the conference.
+            $ext->add($context, $id, '', new ext_playback($instruction));
+        }
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,startmuted)', 'yes'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_join_leave)', 'no'));

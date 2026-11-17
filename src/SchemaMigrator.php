@@ -48,4 +48,33 @@ final class SchemaMigrator
         // Duplicates cause creation to fail; do not modify or remove user data.
         $db->exec('CREATE UNIQUE INDEX ' . self::INDEX . ' ON advancedpaging_groups (extension)');
     }
+
+    public static function ensurePagingOptions(PDO $db): void
+    {
+        $columns = [
+            'instruction_recording_id' => ['mysql' => 'BIGINT NULL', 'sqlite' => 'INTEGER NULL'],
+            'speaker_volume' => ['mysql' => 'TINYINT NOT NULL DEFAULT 0', 'sqlite' => 'INTEGER NOT NULL DEFAULT 0'],
+            'busy_policy' => ['mysql' => 'TINYINT NOT NULL DEFAULT 0', 'sqlite' => 'INTEGER NOT NULL DEFAULT 0'],
+        ];
+        $driver = $db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        if ($driver === 'mysql') {
+            $query = $db->prepare(
+                'SELECT COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?'
+            );
+            $query->execute(['advancedpaging_groups']);
+            $existing = array_flip($query->fetchAll(PDO::FETCH_COLUMN));
+        } elseif ($driver === 'sqlite') {
+            $existing = [];
+            foreach ($db->query('PRAGMA table_info(advancedpaging_groups)')->fetchAll(PDO::FETCH_ASSOC) as $column) {
+                $existing[$column['name']] = true;
+            }
+        } else {
+            throw new RuntimeException('Unsupported FreePBX database driver.');
+        }
+        foreach ($columns as $name => $types) {
+            if (!isset($existing[$name])) {
+                $db->exec('ALTER TABLE advancedpaging_groups ADD COLUMN ' . $name . ' ' . $types[$driver]);
+            }
+        }
+    }
 }

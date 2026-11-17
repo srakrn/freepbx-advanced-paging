@@ -11,7 +11,7 @@ if (!$socket) {
     throw new RuntimeException('Missing isolated database socket.');
 }
 $db = new PDO('mysql:unix_socket=' . $socket . ';dbname=ap_test', 'root', '', [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$db->exec('CREATE TABLE advancedpaging_groups (id INT PRIMARY KEY AUTO_INCREMENT, extension VARCHAR(25) NOT NULL, name VARCHAR(255), enabled TINYINT NOT NULL, audio_mode VARCHAR(10) NOT NULL, pre_recording_id INT NULL, post_recording_id INT NULL) ENGINE=InnoDB');
+$db->exec('CREATE TABLE advancedpaging_groups (id INT PRIMARY KEY AUTO_INCREMENT, extension VARCHAR(25) NOT NULL, name VARCHAR(255), enabled TINYINT NOT NULL, audio_mode VARCHAR(10) NOT NULL, pre_recording_id INT NULL, post_recording_id INT NULL, instruction_recording_id INT NULL, speaker_volume TINYINT NOT NULL DEFAULT 0, busy_policy TINYINT NOT NULL DEFAULT 0) ENGINE=InnoDB');
 $db->exec('CREATE TABLE advancedpaging_members (group_id INT NOT NULL, extension VARCHAR(25) NOT NULL, PRIMARY KEY (group_id, extension)) ENGINE=InnoDB');
 SchemaMigrator::ensureUniqueExtensions($db);
 SchemaMigrator::ensureUniqueExtensions($db);

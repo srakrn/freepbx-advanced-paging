@@ -18,7 +18,7 @@ final class EnabledRouteCollector
 $ext = new EnabledRouteCollector();
 $ext->addInclude('from-internal-noxfer-additional', 'ext-advancedpaging');
 advancedpaging_generate_group_routes([
-    ['id' => 1, 'extension' => '8555', 'enabled' => 1],
+    ['id' => 1, 'extension' => '8555', 'enabled' => 1, 'instruction_sounds' => 'custom/instruction'],
     ['id' => 2, 'extension' => '8556', 'enabled' => 0],
 ]);
 if (!isset($ext->entries['ext-advancedpaging']['8555'])
@@ -31,6 +31,10 @@ foreach (['UUID()', 'AdvancedPagingStart', 'AP_ADMITTED', 'AP_ADMISSION_TRIES', 
     if (strpos($dialplan, $expected) === false) {
         throw new RuntimeException('Admission-safe route missing ' . $expected . ': ' . $dialplan);
     }
+}
+if (strpos($dialplan, 'Playback(custom/instruction)') === false
+    || strpos($dialplan, 'Playback(custom/instruction)') > strpos($dialplan, 'AdvancedPagingStart')) {
+    throw new RuntimeException('Caller instruction must play before receiver admission.');
 }
 if (strpos($dialplan, 'Wait(') === false || strpos($dialplan, 'GotoIf(') === false) {
     throw new RuntimeException('Admission watchdog was not rendered.');

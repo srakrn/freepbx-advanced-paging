@@ -9,7 +9,7 @@ use Throwable;
  * Serialized admission and session event loop.
  *
  * The group loader must return an immutable, validated snapshot including
- * mode, pre, post, targets, auto_answer and setup_seconds. This class does not
+     * mode, pre, post, targets, auto_answer and setup_seconds. This class does not
  * authenticate AMI, supervise the process, or recover after a process crash.
  */
 final class AdmissionCoordinator

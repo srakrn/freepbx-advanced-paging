@@ -63,6 +63,18 @@ try {
 }
 checkOrigination(!$uncertain->cancelConfirmed(), 'Uncertain origination was marked complete.');
 
+$ami = new OriginationAmi();
+$whisper = new AmiOrigination($ami);
+$whisper->start('PJSIP/210/sip:210@192.0.2.10:5060', 'ap-' . str_repeat('c', 32), 5000, false,
+    ['ALERTINFO' => 'Ring Answer', 'CALLINFO' => ''], true);
+$request = $ami->requests[0];
+checkOrigination($request['Channel'] === 'Local/s@advancedpaging-whisper/n'
+    && $request['Application'] === 'ConfBridge'
+    && $request['Data'] === 'ap-' . str_repeat('c', 32) . ',,,user_menu'
+    && in_array('__AP_SP_DEVICE=PJSIP/210', $request['Variable'], true)
+    && in_array('__CONFBRIDGE(user,startmuted)=no', $request['Variable'], true),
+    'Whisper origination was not routed through the ChanSpy conference worker.');
+
 try {
     (new AmiOrigination($ami))->start('PJSIP/123@outside', 'ap-' . str_repeat('a', 32), 5000);
     throw new RuntimeException('External dial string accepted.');

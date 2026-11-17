@@ -32,7 +32,7 @@ final class MockRecordings
     }
 }
 $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY, name TEXT, extension TEXT, enabled INTEGER, audio_mode TEXT, pre_recording_id INTEGER, post_recording_id INTEGER)');
+$db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY, name TEXT, extension TEXT, enabled INTEGER, audio_mode TEXT, pre_recording_id INTEGER, post_recording_id INTEGER, instruction_recording_id INTEGER, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
 $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER, extension TEXT)');
 $db->exec('CREATE TABLE paging_autoanswer (useragent TEXT, var TEXT, setting TEXT)');
 $db->exec("INSERT INTO paging_autoanswer VALUES ('TestPhone', 'ALERTINFO', 'Specific Answer')");

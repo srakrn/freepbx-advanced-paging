@@ -31,6 +31,14 @@ if (count($found) !== 2 || $found[0]['channel'] !== 'PJSIP/101/sip:101@192.0.2.1
     || $found[0]['user_agent'] !== 'Grandstream GRP2602W') {
     throw new RuntimeException('Endpoint resolution failed: ' . json_encode($found));
 }
+$forced = $resolver->resolve(['101', '102'], '100', '100', 1);
+if (count($forced) !== 3 || !$forced[2]['busy']) {
+    throw new RuntimeException('Force did not include a busy registered endpoint.');
+}
+$whisper = $resolver->resolve(['101', '102'], '100', '100', 2);
+if (count($whisper) !== 3 || !$whisper[2]['busy']) {
+    throw new RuntimeException('Whisper did not identify busy registered endpoints.');
+}
 if ($resolver->resolve(['101'], '100', '101') !== []) {
     throw new RuntimeException('Caller device was not excluded.');
 }

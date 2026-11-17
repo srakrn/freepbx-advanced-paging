@@ -35,7 +35,7 @@ namespace {
     }
     function backupDb(bool $rejectMember = false): PDO {
         $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        $db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id INTEGER, post_recording_id INTEGER)');
+        $db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id INTEGER, post_recording_id INTEGER, instruction_recording_id INTEGER, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
         $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER NOT NULL, extension TEXT NOT NULL '
             . ($rejectMember ? "CHECK(extension != '101')" : '') . ', PRIMARY KEY (group_id, extension))');
         return $db;
@@ -50,11 +50,12 @@ namespace {
     $GLOBALS['reloadCount'] = 0;
     $source = backupModule(backupDb());
     $source->saveGroup(['name' => 'Office', 'extension' => '500', 'enabled' => '1', 'audio_mode' => 'duplex',
-        'members' => ['100', '101'], 'pre_recording_id' => '7', 'post_recording_id' => '8']);
+        'members' => ['100', '101'], 'pre_recording_id' => '7', 'post_recording_id' => '8',
+        'instruction_recording_id' => '7', 'speaker_volume' => 9, 'busy_policy' => 2]);
     $backup = new \FreePBX\modules\Advancedpaging\Backup((object) ['Advancedpaging' => $source]);
     $backup->runBackup(null, null);
     checkBackup($backup->dependencies === ['core', 'recordings'], 'Missing backup dependencies.');
-    checkBackup($backup->configs['version'] === 1 && count($backup->configs['groups']) === 1, 'Backup not exported.');
+    checkBackup($backup->configs['version'] === 2 && count($backup->configs['groups']) === 1, 'Backup not exported.');
     checkBackup(!isset($backup->configs['groups'][0]['id']), 'Backup must not export internal group IDs.');
     $target = backupModule(backupDb());
     $restore = new \FreePBX\modules\Advancedpaging\Restore((object) ['Advancedpaging' => $target], $backup->configs);
@@ -63,6 +64,8 @@ namespace {
     $result = $target->getGroup(1);
     checkBackup($result['extension'] === '500' && $result['members'] === ['100', '101'], 'Backup round trip failed.');
     checkBackup((string) $result['pre_recording_id'] === '7' && (string) $result['post_recording_id'] === '8', 'Recording IDs not preserved.');
+    checkBackup((string) $result['instruction_recording_id'] === '7' && (int) $result['speaker_volume'] === 9
+        && (int) $result['busy_policy'] === 2, 'New paging options were not preserved.');
     try {
         $restore->runRestore();
         throw new RuntimeException('Existing group was overwritten.');
@@ -110,5 +113,13 @@ namespace {
             checkBackup($error->getMessage() === 'Invalid or unsupported Advanced Paging backup.', 'Unexpected backup error.');
         }
     }
+    $legacy = ['version' => 1, 'groups' => [[
+        'name' => 'Legacy', 'extension' => '510', 'enabled' => 1, 'audio_mode' => 'simplex',
+        'members' => ['100'], 'pre_recording_id' => null, 'post_recording_id' => null,
+    ]]];
+    (new \FreePBX\modules\Advancedpaging\Restore((object) ['Advancedpaging' => $target], $legacy))->runRestore();
+    $legacyGroup = $target->getGroup(2);
+    checkBackup((int) $legacyGroup['speaker_volume'] === 0 && (int) $legacyGroup['busy_policy'] === 0
+        && $legacyGroup['instruction_recording_id'] === null, 'Legacy v1 backup defaults were not preserved.');
     echo "Backup round trip, dependency, conflict, and rollback tests passed.\n";
 }

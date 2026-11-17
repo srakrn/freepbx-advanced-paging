@@ -9,8 +9,8 @@ use RuntimeException;
  * Resolves FreePBX extension/device mappings without calling from-internal,
  * following call forwarding, or using arbitrary configured dial strings.
  *
- * State lookup must return the Asterisk DEVICE_STATE value. Unknown, busy,
- * ringing, unavailable and exceptional states are deliberately skipped.
+ * State lookup must return the Asterisk DEVICE_STATE value. Policy controls
+ * whether busy states are skipped, force-paged, or sent through ChanSpy.
  */
 final class EndpointResolver
 {
@@ -30,8 +30,11 @@ final class EndpointResolver
     }
 
     /** Returns registered PJSIP contacts, never dialplan destinations. */
-    public function resolve(array $members, string $callerExtension, string $callerDevice): array
+    public function resolve(array $members, string $callerExtension, string $callerDevice, int $busyPolicy = 0): array
     {
+        if (!in_array($busyPolicy, [0, 1, 2], true)) {
+            throw new InvalidArgumentException('Invalid busy extension policy.');
+        }
         $users = ($this->users)();
         if (!is_array($users)) {
             throw new RuntimeException('Cannot resolve FreePBX extensions.');
@@ -61,7 +64,10 @@ final class EndpointResolver
                     continue;
                 }
                 $endpoint = 'PJSIP/' . $deviceId;
-                if (($this->state)($endpoint) === 'NOT_INUSE') {
+                $deviceState = ($this->state)($endpoint);
+                $normalState = in_array($deviceState, ['NOT_INUSE', 'ONHOLD'], true);
+                $whisperable = in_array($deviceState, ['INUSE', 'BUSY', 'RINGINUSE', 'HOLDINUSE'], true);
+                if ($busyPolicy === 1 || $normalState || ($busyPolicy === 2 && $whisperable)) {
                     $contacts = $this->contacts === null ? [] : ($this->contacts)($deviceId);
                     if (!is_array($contacts)) {
                         throw new RuntimeException('Cannot resolve registered PJSIP contacts.');
@@ -78,7 +84,11 @@ final class EndpointResolver
                             continue;
                         }
                         $target = 'PJSIP/' . $deviceId . '/' . $uri;
-                        $targets[$target] = ['channel' => $target, 'endpoint' => $deviceId, 'user_agent' => $agent];
+                        $targets[$target] = [
+                            'channel' => $target, 'endpoint' => $deviceId,
+                            'user_agent' => $agent, 'device_state' => $deviceState,
+                            'busy' => $whisperable,
+                        ];
                     }
                 }
             }

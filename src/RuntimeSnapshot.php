@@ -47,7 +47,12 @@ final class RuntimeSnapshot
             || !isset($group['members']) || !is_array($group['members'])) {
             throw new RuntimeException('Paging group is unavailable.');
         }
-        $targets = ($this->resolveTargets)($group['members'], $extension, $deviceId);
+        $busyPolicy = (int) ($group['busy_policy'] ?? 0);
+        $volume = (int) ($group['speaker_volume'] ?? 0);
+        if (!in_array($busyPolicy, [0, 1, 2], true) || $volume < 0 || $volume > 14) {
+            throw new RuntimeException('Paging group options are invalid.');
+        }
+        $targets = ($this->resolveTargets)($group['members'], $extension, $deviceId, $busyPolicy);
         $autoAnswer = ($this->autoAnswer)($targets);
         if (!is_array($targets) || !$targets || !is_array($autoAnswer)) {
             throw new RuntimeException('No eligible paging endpoints or auto-answer settings.');
@@ -59,6 +64,12 @@ final class RuntimeSnapshot
                 continue;
             }
             $target['auto_answer'] = array_replace($autoAnswer, $overrides[$target['channel']] ?? []);
+            $target['whisper'] = $busyPolicy === 2 && !empty($target['busy']);
+            if ($volume > 0) {
+                $target['auto_answer']['ALERTINFO'] = AutoAnswerSettings::validate(
+                    $target['auto_answer']['ALERTINFO'] . ';volume=' . ($volume - 1)
+                );
+            }
         }
         unset($target);
         $files = [];
@@ -89,9 +100,17 @@ final class RuntimeSnapshot
             $ids[] = $id;
             $files[$id] = $soundList;
         }
+        $instructionId = $group['instruction_recording_id'] ?? null;
+        if ($instructionId !== null && $instructionId !== ''
+            && ((!is_string($instructionId) && !is_int($instructionId))
+                || !preg_match('/^[1-9][0-9]*$/D', (string) $instructionId))) {
+            throw new RuntimeException('Invalid caller instruction recording.');
+        }
         return [
             'mode' => $group['audio_mode'], 'pre' => $ids[0], 'post' => $ids[1],
             'targets' => array_values($targets), 'auto_answer' => $autoAnswer,
+            'instruction_recording_id' => $instructionId === null || $instructionId === '' ? null : (string) $instructionId,
+            'busy_policy' => $busyPolicy,
             'setup_seconds' => 5.0, 'recording_files' => $files,
         ];
     }

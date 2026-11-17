@@ -11,7 +11,7 @@ final class Backup extends Base\BackupBase
         $this->addDependency('core');
         $this->addDependency('recordings');
         $this->addConfigs([
-            'version' => 1,
+            'version' => 2,
             'groups' => $this->FreePBX->Advancedpaging->exportGroups(),
         ]);
     }

@@ -12,10 +12,15 @@ function schemaDb(): PDO
 }
 $db = schemaDb();
 SchemaMigrator::ensureUniqueExtensions($db);
+SchemaMigrator::ensurePagingOptions($db);
+SchemaMigrator::ensurePagingOptions($db);
+if (count($db->query('PRAGMA table_info(advancedpaging_groups)')->fetchAll(PDO::FETCH_ASSOC)) !== 6) {
+    throw new RuntimeException('Paging option columns were not migrated idempotently.');
+}
 SchemaMigrator::ensureUniqueExtensions($db);
-$db->exec("INSERT INTO advancedpaging_groups VALUES (1, '100', 'one')");
+$db->exec("INSERT INTO advancedpaging_groups (id, extension, name) VALUES (1, '100', 'one')");
 try {
-    $db->exec("INSERT INTO advancedpaging_groups VALUES (2, '100', 'two')");
+    $db->exec("INSERT INTO advancedpaging_groups (id, extension, name) VALUES (2, '100', 'two')");
     throw new RuntimeException('Duplicate extension was accepted.');
 } catch (PDOException $expected) {
 }
@@ -30,7 +35,7 @@ try {
     }
 }
 $db = schemaDb();
-$db->exec("INSERT INTO advancedpaging_groups VALUES (1, '100', 'one'), (2, '100', 'two')");
+$db->exec("INSERT INTO advancedpaging_groups (id, extension, name) VALUES (1, '100', 'one'), (2, '100', 'two')");
 try {
     SchemaMigrator::ensureUniqueExtensions($db);
     throw new RuntimeException('Duplicate data was silently changed.');

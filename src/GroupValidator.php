@@ -73,6 +73,24 @@ final class GroupValidator
             }
             $recordings[$field] = (string) $value;
         }
+        $instruction = $input['instruction_recording_id'] ?? null;
+        if ($instruction === null || $instruction === '') {
+            $instruction = null;
+        } elseif ((!is_string($instruction) && !is_int($instruction))
+            || !preg_match('/^[1-9][0-9]*$/D', (string) $instruction)
+            || !($this->recordingExists)((string) $instruction)) {
+            throw new InvalidArgumentException('Unknown or invalid caller instruction recording.');
+        } else {
+            $instruction = (string) $instruction;
+        }
+        $volume = $input['speaker_volume'] ?? 0;
+        if ((!is_string($volume) && !is_int($volume)) || !preg_match('/^(?:0|[1-9]|1[0-4])$/D', (string) $volume)) {
+            throw new InvalidArgumentException('Speaker volume must be None or between 1 and 14.');
+        }
+        $busyPolicy = $input['busy_policy'] ?? 0;
+        if ((!is_string($busyPolicy) && !is_int($busyPolicy)) || !in_array((string) $busyPolicy, ['0', '1', '2'], true)) {
+            throw new InvalidArgumentException('Busy extension policy must be Skip, Force, or Whisper.');
+        }
 
         return [
             'name' => trim($name),
@@ -82,6 +100,9 @@ final class GroupValidator
             'members' => array_values($normalizedMembers),
             'pre_recording_id' => $recordings['pre_recording_id'],
             'post_recording_id' => $recordings['post_recording_id'],
+            'instruction_recording_id' => $instruction,
+            'speaker_volume' => (int) $volume,
+            'busy_policy' => (int) $busyPolicy,
         ];
     }
 }

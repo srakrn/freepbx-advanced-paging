@@ -34,13 +34,17 @@ $group = [
     'name' => ' Office ', 'extension' => '500', 'enabled' => '1',
     'audio_mode' => 'simplex', 'members' => ['101', '101', '102'],
     'pre_recording_id' => '7', 'post_recording_id' => '',
+    'instruction_recording_id' => '7', 'speaker_volume' => '5', 'busy_policy' => '2',
 ];
 $valid = $validator->validate($group);
 check($valid['name'] === 'Office' && $valid['members'] === ['101', '102'], 'Normalization failed.');
 check($valid['pre_recording_id'] === '7' && $valid['post_recording_id'] === null, 'Recording normalization failed.');
+check($valid['instruction_recording_id'] === '7' && $valid['speaker_volume'] === 5
+    && $valid['busy_policy'] === 2, 'Paging options normalization failed.');
 foreach ([
     ['extension' => '100'], ['extension' => '5${X}'], ['members' => ['999']],
     ['audio_mode' => 'broadcast'], ['pre_recording_id' => '../audio'],
+    ['speaker_volume' => '15'], ['busy_policy' => '3'], ['instruction_recording_id' => '99'],
     ['enabled' => 'yes'], ['name' => []],
 ] as $override) {
     rejects(fn () => $validator->validate(array_replace($group, $override)));
@@ -74,7 +78,7 @@ $session->initiatorHungUp(true, false);
 check($session->state() === Session::TERMINATING, 'Missing post-page should be skipped.');
 
 $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id TEXT, post_recording_id TEXT)');
+$db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id TEXT, post_recording_id TEXT, instruction_recording_id TEXT, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
 $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER NOT NULL, extension TEXT NOT NULL, PRIMARY KEY (group_id, extension))');
 $repository = new GroupRepository($db);
 $first = $repository->save($valid);

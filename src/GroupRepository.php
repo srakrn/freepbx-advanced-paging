@@ -24,7 +24,8 @@ final class GroupRepository
         $statement = $this->db->query(
             'SELECT g.*, COUNT(m.extension) AS member_count FROM advancedpaging_groups g ' .
             'LEFT JOIN advancedpaging_members m ON m.group_id = g.id ' .
-            'GROUP BY g.id, g.name, g.extension, g.enabled, g.audio_mode, g.pre_recording_id, g.post_recording_id ' .
+            'GROUP BY g.id, g.name, g.extension, g.enabled, g.audio_mode, g.pre_recording_id, g.post_recording_id, ' .
+            'g.instruction_recording_id, g.speaker_volume, g.busy_policy ' .
             'ORDER BY g.extension'
         );
         return $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -55,10 +56,11 @@ final class GroupRepository
             $values = [
                 $group['name'], $group['extension'], (int) $group['enabled'],
                 $group['audio_mode'], $group['pre_recording_id'], $group['post_recording_id'],
+                $group['instruction_recording_id'], $group['speaker_volume'], $group['busy_policy'],
             ];
             if ($id === null) {
                 $statement = $this->db->prepare(
-                    'INSERT INTO advancedpaging_groups (name, extension, enabled, audio_mode, pre_recording_id, post_recording_id) VALUES (?, ?, ?, ?, ?, ?)'
+                    'INSERT INTO advancedpaging_groups (name, extension, enabled, audio_mode, pre_recording_id, post_recording_id, instruction_recording_id, speaker_volume, busy_policy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
                 );
                 $statement->execute($values);
                 $id = (int) $this->db->lastInsertId();
@@ -70,7 +72,7 @@ final class GroupRepository
                     throw new RuntimeException('Group does not exist.');
                 }
                 $statement = $this->db->prepare(
-                    'UPDATE advancedpaging_groups SET name = ?, extension = ?, enabled = ?, audio_mode = ?, pre_recording_id = ?, post_recording_id = ? WHERE id = ?'
+                    'UPDATE advancedpaging_groups SET name = ?, extension = ?, enabled = ?, audio_mode = ?, pre_recording_id = ?, post_recording_id = ?, instruction_recording_id = ?, speaker_volume = ?, busy_policy = ? WHERE id = ?'
                 );
                 $values[] = $id;
                 $statement->execute($values);
@@ -125,14 +127,15 @@ final class GroupRepository
         $this->db->beginTransaction();
         try {
             $insert = $this->db->prepare(
-                'INSERT INTO advancedpaging_groups (name, extension, enabled, audio_mode, pre_recording_id, post_recording_id) VALUES (?, ?, ?, ?, ?, ?)'
+                'INSERT INTO advancedpaging_groups (name, extension, enabled, audio_mode, pre_recording_id, post_recording_id, instruction_recording_id, speaker_volume, busy_policy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $member = $this->db->prepare('INSERT INTO advancedpaging_members (group_id, extension) VALUES (?, ?)');
             $ids = [];
             foreach ($groups as $group) {
                 $insert->execute([
                     $group['name'], $group['extension'], (int) $group['enabled'], $group['audio_mode'],
-                    $group['pre_recording_id'], $group['post_recording_id'],
+                    $group['pre_recording_id'], $group['post_recording_id'], $group['instruction_recording_id'],
+                    $group['speaker_volume'], $group['busy_policy'],
                 ]);
                 $id = (int) $this->db->lastInsertId();
                 foreach ($group['members'] as $extension) {

@@ -20,7 +20,7 @@ a production system without a maintenance window and current FreePBX backup.
    `/var/www/html/admin/modules/advancedpaging`, then set ownership:
 
    ```sh
-   tar -xzf advancedpaging-17.0.0alpha3.tar.gz -C /var/www/html/admin/modules
+   tar -xzf advancedpaging-17.0.0alpha4.tar.gz -C /var/www/html/admin/modules
    chown -R asterisk:asterisk /var/www/html/admin/modules/advancedpaging
    ```
 
@@ -74,8 +74,21 @@ a production system without a maintenance window and current FreePBX backup.
    and duplex behavior, opening/closing recordings, busy/unavailable receivers,
    repeated calls to one group, concurrent groups, and service restart.
 10. Test with the actual target Grandstream GRP2602W and WP816 firmware. PBX
-   headers are sent using the installed Paging module's defaults and user-agent
-   overrides, but phones may ignore or reinterpret auto-answer headers.
+    headers are sent using the installed Paging module's defaults and user-agent
+    overrides, but phones may ignore or reinterpret auto-answer headers.
+
+## Group options
+
+- Caller instruction recordings play on the caller channel before receiver
+  admission and before the pre-page recording.
+- Speaker Volume Override uses the Paging module's Sangoma-compatible
+  `volume` Alert-Info parameter (None or levels 1–14); other handset vendors
+  may ignore it.
+- Busy Extensions supports Skip, Force, and Whisper. Whisper applies ChanSpy
+  whisper mode to busy PJSIP channels and normally pages idle/held receivers
+  through the standard conference path. Whisper behavior depends on Asterisk
+  ChanSpy and handset/channel support; test against the specific endpoint and
+  avoid duplex groups when whispering.
 
 ## Upgrade and uninstall
 

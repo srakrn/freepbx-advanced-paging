@@ -41,6 +41,11 @@ try {
     if (!file_exists($etc . '/advancedpaging_manager.conf') || !file_exists($etc . '/advancedpaging-runtime.ini')) {
         throw new RuntimeException('Install hook did not provision runtime credentials.');
     }
+    foreach (['instruction_recording_id', 'speaker_volume', 'busy_policy'] as $column) {
+        if (!in_array($column, array_column($db->query('PRAGMA table_info(advancedpaging_groups)')->fetchAll(PDO::FETCH_ASSOC), 'name'), true)) {
+            throw new RuntimeException('Install hook did not migrate ' . $column . '.');
+        }
+    }
     if ($GLOBALS['reloads'] !== 1) {
         throw new RuntimeException('Install hook did not request configuration reload.');
     }

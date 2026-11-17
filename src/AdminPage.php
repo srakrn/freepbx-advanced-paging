@@ -69,6 +69,9 @@ final class AdminPage
                         'members' => $post['members'] ?? [],
                         'pre_recording_id' => $post['pre_recording_id'] ?? null,
                         'post_recording_id' => $post['post_recording_id'] ?? null,
+                        'instruction_recording_id' => $post['instruction_recording_id'] ?? null,
+                        'speaker_volume' => $post['speaker_volume'] ?? '0',
+                        'busy_policy' => $post['busy_policy'] ?? '0',
                     ];
                     $id = $this->module->saveGroup($input, $id);
                     $notice = 'Group saved. Apply configuration to activate changes.';
@@ -105,9 +108,11 @@ final class AdminPage
             $group = $group ?? [
                 'name' => '', 'extension' => '', 'enabled' => '1', 'audio_mode' => 'simplex',
                 'members' => [], 'pre_recording_id' => null, 'post_recording_id' => null,
+                'instruction_recording_id' => null, 'speaker_volume' => 0, 'busy_policy' => 0,
             ];
             if ($method === 'POST' && $error !== '') {
-                foreach (['name', 'extension', 'enabled', 'audio_mode', 'members', 'pre_recording_id', 'post_recording_id'] as $key) {
+                foreach (['name', 'extension', 'enabled', 'audio_mode', 'members', 'pre_recording_id', 'post_recording_id',
+                    'instruction_recording_id', 'speaker_volume', 'busy_policy'] as $key) {
                     if (isset($post[$key]) && (is_string($post[$key]) || ($key === 'members' && is_array($post[$key])))) {
                         $group[$key] = $post[$key];
                     }
@@ -166,6 +171,15 @@ final class AdminPage
         }
         $html .= $this->field('Pre-page Recording', $this->select('pre_recording_id', $recordings, (string) ($group['pre_recording_id'] ?? '')));
         $html .= $this->field('Post-page Recording', $this->select('post_recording_id', $recordings, (string) ($group['post_recording_id'] ?? '')));
+        $html .= $this->field('Caller Instruction (before page tone)', $this->select('instruction_recording_id', $recordings, (string) ($group['instruction_recording_id'] ?? '')));
+        $volume = ['0' => 'None'];
+        for ($level = 1; $level <= 14; ++$level) {
+            $volume[(string) $level] = (string) $level;
+        }
+        $html .= $this->field('Speaker Volume Override', $this->select('speaker_volume', $volume, (string) ($group['speaker_volume'] ?? 0)));
+        $html .= $this->field('Busy Extensions', $this->select('busy_policy', [
+            '0' => 'Skip', '1' => 'Force', '2' => 'Whisper',
+        ], (string) ($group['busy_policy'] ?? 0)));
         return $html . '<p><button type="submit" class="btn btn-primary">Submit</button> '
             . '<a class="btn btn-default" href="?display=advancedpaging">Cancel</a></p></form>';
     }

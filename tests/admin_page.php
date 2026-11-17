@@ -29,7 +29,7 @@ function checkAdmin(bool $value, string $message): void
 }
 
 $db = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id INTEGER, post_recording_id INTEGER)');
+$db->exec('CREATE TABLE advancedpaging_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, extension TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL, audio_mode TEXT NOT NULL, pre_recording_id INTEGER, post_recording_id INTEGER, instruction_recording_id INTEGER, speaker_volume INTEGER NOT NULL DEFAULT 0, busy_policy INTEGER NOT NULL DEFAULT 0)');
 $db->exec('CREATE TABLE advancedpaging_members (group_id INTEGER NOT NULL, extension TEXT NOT NULL, PRIMARY KEY (group_id, extension))');
 $core = new AdminTestCore();
 $recordings = new AdminTestRecordings();

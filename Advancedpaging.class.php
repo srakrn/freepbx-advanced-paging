@@ -59,6 +59,7 @@ final class Advancedpaging implements BMO
     {
         try {
             SchemaMigrator::ensureUniqueExtensions($this->freepbx->Database);
+            SchemaMigrator::ensurePagingOptions($this->freepbx->Database);
             $this->ensureRuntimeDirectory($runtimeDirectory, $ownerUser, $ownerGroup);
             (new RuntimeProvisioner($asteriskDirectory, $runtimeDirectory, null, null, $ownerUser, $ownerGroup))->install();
             freepbx_log(FPBX_LOG_NOTICE, 'Advanced Paging schema and AMI runtime account provisioned');
@@ -113,7 +114,7 @@ final class Advancedpaging implements BMO
     }
 
     /** Resolve a session snapshot using Core and AstDB, never from-internal. */
-    public function resolveEligibleDevices(array $members, string $callerExtension, string $callerDevice): array
+    public function resolveEligibleDevices(array $members, string $callerExtension, string $callerDevice, int $busyPolicy = 0): array
     {
         $manager = $this->freepbx->astman;
         if (!$manager->connected()) {
@@ -131,12 +132,36 @@ final class Advancedpaging implements BMO
             },
             function (string $device) use ($manager): array { return $this->registeredContacts($manager, $device); }
         );
-        return $resolver->resolve($members, $callerExtension, $callerDevice);
+        return $resolver->resolve($members, $callerExtension, $callerDevice, $busyPolicy);
     }
 
     public function getPagingAutoAnswerDefaults(): array
     {
         return AutoAnswerSettings::fromPagingDefaults(paging_get_autoanswer_defaults());
+    }
+
+    public function getRecordingSoundList(string $id): string
+    {
+        if (!preg_match('/^[1-9][0-9]*$/D', $id)) {
+            return '';
+        }
+        $record = $this->freepbx->Recordings->getRecordingById($id);
+        if (!is_string($record['filename'] ?? null) || $record['filename'] === '' || empty($record['soundlist'])) {
+            return '';
+        }
+        foreach ($record['soundlist'] as $sound) {
+            if (empty($sound['languages'])) {
+                return '';
+            }
+        }
+        $filename = (string) $record['filename'];
+        foreach (explode('&', $filename) as $sound) {
+            if ($sound === '' || strpos($sound, '..') !== false
+                || !preg_match('/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/D', $sound)) {
+                return '';
+            }
+        }
+        return $filename;
     }
 
     /** Resolve configuration and media once, without exposing credentials. */
@@ -158,8 +183,8 @@ final class Advancedpaging implements BMO
                 $users = $this->freepbx->Core->getAllUsers();
                 return is_string($user) && isset($users[$user]) ? $user : null;
             },
-            function (array $members, string $caller, string $device): array {
-                return $this->resolveEligibleDevices($members, $caller, $device);
+            function (array $members, string $caller, string $device, int $busyPolicy): array {
+                return $this->resolveEligibleDevices($members, $caller, $device, $busyPolicy);
             },
             function (array $targets): array { return $this->getAutoAnswerForTargets($targets); },
             function (string $id) use ($groupId): string {
@@ -267,6 +292,9 @@ final class Advancedpaging implements BMO
                     'enabled' => (int) $group['enabled'], 'audio_mode' => $group['audio_mode'],
                     'members' => $group['members'], 'pre_recording_id' => $group['pre_recording_id'],
                     'post_recording_id' => $group['post_recording_id'],
+                    'instruction_recording_id' => $group['instruction_recording_id'],
+                    'speaker_volume' => (int) $group['speaker_volume'],
+                    'busy_policy' => (int) $group['busy_policy'],
                 ];
             }
             if ($ownTransaction) {

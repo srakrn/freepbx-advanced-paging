@@ -51,7 +51,7 @@ final class AmiOrigination
      * Only internal endpoints are accepted. Local channels are allowed solely
      * for isolated tests; callers must never pass untrusted dial strings.
      */
-    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = []): void
+    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false): void
     {
         if ($this->submitted || !preg_match('/^ap-[a-f0-9]{32}$/D', $conference)
             || $timeoutMs < 1000 || $timeoutMs > 60000) {
@@ -69,17 +69,30 @@ final class AmiOrigination
         $headers = [
             'Action' => 'Originate',
             'ActionID' => $this->actionId,
-            'Channel' => $testLocal ? $target : 'Local/s@advancedpaging-dial/n',
-            'Context' => 'advancedpaging-receiver',
-            'Exten' => 's',
-            'Priority' => 1,
+            'Channel' => $testLocal ? $target : ($whisper
+                ? 'Local/s@advancedpaging-whisper/n' : 'Local/s@advancedpaging-dial/n'),
             'Timeout' => $timeoutMs,
             'Async' => 'true',
             'ChannelId' => $this->primaryId,
             'OtherChannelId' => $this->peerId,
             'Variable' => ['__AP_CONF=' . $conference, '__AP_ORIGINATION_ID=' . $this->id],
         ];
-        if (!$testLocal) {
+        if ($whisper && !$testLocal) {
+            if (!preg_match('/^PJSIP\/([A-Za-z0-9_.-]+)\//D', $target, $match)) {
+                throw new InvalidArgumentException('Whisper requires a registered PJSIP device.');
+            }
+            $headers['Application'] = 'ConfBridge';
+            $headers['Data'] = $conference . ',,,user_menu';
+            $headers['Variable'][] = '__AP_SP_DEVICE=PJSIP/' . $match[1];
+            $headers['Variable'][] = '__CONFBRIDGE(user,quiet)=yes';
+            $headers['Variable'][] = '__CONFBRIDGE(user,startmuted)=no';
+            $headers['Variable'][] = '__CONFBRIDGE(user,announce_join_leave)=no';
+        } else {
+            $headers['Context'] = 'advancedpaging-receiver';
+            $headers['Exten'] = 's';
+            $headers['Priority'] = 1;
+        }
+        if (!$testLocal && !$whisper) {
             if (!array_key_exists('ALERTINFO', $autoAnswer) || !array_key_exists('CALLINFO', $autoAnswer)
                 || !is_string($autoAnswer['ALERTINFO']) || !is_string($autoAnswer['CALLINFO'])) {
                 throw new InvalidArgumentException('FreePBX auto-answer settings are required.');

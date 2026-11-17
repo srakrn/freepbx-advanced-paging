@@ -101,7 +101,8 @@ final class SessionRuntime
                     $conference,
                     (int) ceil($setupSeconds * 1000),
                     $allowLocalForTests,
-                    $targetAutoAnswer
+                    $targetAutoAnswer,
+                    is_array($target) && !empty($target['whisper'])
                 );
             }
             return $sessionId;
