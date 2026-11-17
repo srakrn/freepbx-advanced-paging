@@ -82,6 +82,15 @@ final class AmiPlaybackDriver implements PlaybackDriver
      */
     public function completion(array $event): ?array
     {
+        if (($event['Event'] ?? '') === 'Hangup') {
+            foreach ($this->active as $activeId => $entry) {
+                if (($event['Uniqueid'] ?? '') === $entry['uniqueid']) {
+                    unset($this->active[$activeId]);
+                    return [$activeId, false];
+                }
+            }
+            return null;
+        }
         $id = $event['PlaybackID'] ?? '';
         if (($event['Event'] ?? '') !== 'UserEvent'
             || ($event['UserEvent'] ?? '') !== 'AdvancedPagingPlayback'

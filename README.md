@@ -15,9 +15,10 @@ model, and a transport-independent session controller. The controller orders
 effects and handles duplicate events, but it has no Asterisk effects adapter.
 The eventual runtime must serialize events, atomically lock each group,
 coordinate actual Asterisk operation completion, and clean up calls on failure.
-An initial AMI effects adapter, synchronous connection, playback driver, and
-known-channel resource registry exist. The event loop, unknown-origination
-tracking, real group lock, and FreePBX dialplan integration are not implemented.
+An initial AMI effects adapter, synchronous connection, playback driver,
+known-channel resource registry, and single-session event pump exist.
+Unknown-origination tracking, a shared multi-session runtime, reconnection,
+a real group lock, and FreePBX dialplan integration are not implemented.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
@@ -40,9 +41,11 @@ socket, using only Local channels and a temporary loopback-only AMI listener,
 and tears it down afterwards. It exercises
 receiver survival after initiator hangup, captured playback audio, a timed
 AMI playback injection and confirmed cancellation, AMI receiver hangup, and
-AMI adapter ConfBridge mute/unmute
-using a simulated microphone and a receiver capture. It does **not** verify automatic
-production call control, PJSIP, or the module. On `eich-pbx` the installed
+AMI adapter ConfBridge mute/unmute using a simulated microphone and a receiver
+capture. A separate scenario exercises the session controller and event pump:
+caller hangup triggers closing playback and receiver cleanup. The test injects
+already-joined channels and uses a fake lock; it does **not** verify production
+origination, group locking, failure recovery, PJSIP, or the module. On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 
 ## Platform investigation

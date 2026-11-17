@@ -55,6 +55,7 @@ def main():
             samples = (int(8000 * math.sin(2 * math.pi * 440 * i / 8000)) for i in range(48000))
             audio.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
         mute_capture = root / "mute-receiver.wav"
+        auto_capture = root / "automatic-receiver.wav"
         config = root / "asterisk.conf"
         config.write_text(
             "[directories]\n"
@@ -116,6 +117,11 @@ def main():
             " same => n,ConfBridge(ap-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             "exten => microphone,1,ConfBridge(ap-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            f"exten => auto-receiver,1,MixMonitor({auto_capture})\n"
+            " same => n,ConfBridge(ap-cccccccccccccccccccccccccccccccc,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            "exten => auto-caller,1,ConfBridge(ap-cccccccccccccccccccccccccccccccc,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             "[advancedpaging-inject]\n"
             "exten => s,1,ConfBridge(${AP_CONF},test_bridge,test_user)\n"
@@ -301,6 +307,51 @@ def main():
             if beginning > 100 or middle < 3000 or end > 100:
                 raise RuntimeError(f"Unexpected muted/unmuted audio: {beginning}, {middle}, {end}.")
             print(f"AMI adapter muted/unmuted/muted receiver samples: {beginning}, {middle}, {end}.")
+
+            auto_room = "ap-" + "c" * 32
+            for name, duration in (("auto-receiver", 30), ("auto-caller", 6)):
+                cli(f"channel originate Local/{name}@advancedpaging-lab application Wait {duration}")
+            deadline = time.monotonic() + 5
+            while True:
+                participants = cli("confbridge list " + auto_room)
+                caller_match = re.search(r"Local/auto-caller@advancedpaging-lab-[0-9a-fA-F]{8};2", participants)
+                receiver_match = re.search(r"Local/auto-receiver@advancedpaging-lab-[0-9a-fA-F]{8};2", participants)
+                if caller_match and receiver_match:
+                    break
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Automatic session channels did not join: " + participants)
+                time.sleep(0.1)
+
+            def channel_unique_id(name):
+                info = cli("core show channel " + name)
+                found = re.search(r"UniqueID:\s*(\S+)", info, re.IGNORECASE)
+                if not found:
+                    raise RuntimeError("Channel identity unavailable: " + info)
+                return found.group(1)
+
+            auto_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+                            AP_LAB_CONFERENCE=auto_room, AP_LAB_CALLER=caller_match.group(),
+                            AP_LAB_CALLER_ID=channel_unique_id(caller_match.group()),
+                            AP_LAB_CHANNEL=receiver_match.group(),
+                            AP_LAB_UNIQUEID=channel_unique_id(receiver_match.group()))
+            automatic = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_session.php")],
+                env=auto_env, capture_output=True, text=True, timeout=20,
+            )
+            if automatic.returncode:
+                log.flush()
+                log.seek(0)
+                raise RuntimeError("Automatic session failed: " + automatic.stderr + automatic.stdout + "\n" + log.read()[-12000:])
+            print(automatic.stdout.strip())
+            if "Local/auto-receiver@" in cli("confbridge list " + auto_room):
+                raise RuntimeError("Automatic session left its receiver connected.")
+            with wave.open(str(auto_capture), "rb") as recorded:
+                frames = recorded.readframes(recorded.getnframes())
+            samples = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+            automatic_tone = sum(1 for sample in samples if abs(sample) > 1000)
+            if automatic_tone < 14000:
+                raise RuntimeError(f"Automatic closing playback was truncated: {automatic_tone} samples.")
+            print(f"Automatic receiver captured {automatic_tone} audible-amplitude samples.")
         finally:
             if process.poll() is None:
                 process.terminate()
