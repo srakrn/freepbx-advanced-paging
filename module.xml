@@ -15,6 +15,9 @@
     <methods>
         <get_config pri="600">advancedpaging_get_config</get_config>
     </methods>
+    <fileinclude>
+        <install>preinstall.php</install>
+    </fileinclude>
     <menuitems>
         <advancedpaging needsenginedb="yes">Advanced Paging</advancedpaging>
     </menuitems>
@@ -27,6 +30,9 @@
             <field name="audio_mode" type="string" length="10"/>
             <field name="pre_recording_id" type="integer" notnull="false"/>
             <field name="post_recording_id" type="integer" notnull="false"/>
+            <key name="advancedpaging_groups_extension_uq" type="unique">
+                <column name="extension"/>
+            </key>
         </table>
         <table name="advancedpaging_members">
             <field name="group_id" type="integer" primarykey="true"/>

@@ -5,10 +5,12 @@ an administration page and experimental telephony components, but its
 installation, runtime integration and acceptance testing are incomplete.
 
 The development-only `module.xml`, BMO adapter, and extension-usage hook are
-an integration starting point, not a releasable package. The BMO installation
-hook intentionally rejects installation. The standalone schema migrator
-creates a unique group-extension index and has been tested against temporary
-MariaDB, but it is not yet invoked by the guarded installation hook.
+an integration starting point, not a releasable package. A FreePBX pre-install
+include rejects installation before table migration, and the BMO installation
+hook also rejects it. The module XML declares the unique group-extension
+index. FreePBX 17's actual XML migration implementation and the standalone
+schema check have been tested against temporary MariaDB; full module
+installation has not been tested.
 
 The foundation contains a group validator, transactional repository, session
 model, and a transport-independent session controller. The controller orders
@@ -54,6 +56,7 @@ php tests/admin_page.php
 php tests/page_access.php
 php tests/schema.php
 php tests/backup_restore.php
+php tests/freepbx_preinstall.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -71,7 +74,9 @@ python3 tests/isolated_mariadb.py
 ```
 
 It starts a separate temporary MariaDB instance using a private Unix socket
-and no network listener; it does not connect to the FreePBX database.
+and no network listener; it does not connect to the FreePBX database. It runs
+FreePBX 17's XML table migration twice and verifies the transactional tables
+and unique extension index.
 
 It starts a second Asterisk process with temporary configuration and its own
 socket, using only Local channels and a temporary loopback-only AMI listener,
