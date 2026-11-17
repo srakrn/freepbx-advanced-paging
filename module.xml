@@ -1,0 +1,33 @@
+<module>
+    <rawname>advancedpaging</rawname>
+    <name>Advanced Paging</name>
+    <version>17.0.0alpha1</version>
+    <publisher>Advanced Paging contributors</publisher>
+    <license>GPLv3+</license>
+    <category>Applications</category>
+    <description>Development preview; paging call control is not implemented. Do not install.</description>
+    <depends>
+        <version>17.0.1</version>
+        <module>core ge 17.0.1</module>
+        <module>recordings ge 17.0.1</module>
+        <module>paging ge 17.0.1</module>
+    </depends>
+    <database>
+        <table name="advancedpaging_groups">
+            <field name="id" type="integer" primarykey="true" autoincrement="true"/>
+            <field name="name" type="string" length="255"/>
+            <field name="extension" type="string" length="25"/>
+            <field name="enabled" type="boolean" default="1"/>
+            <field name="audio_mode" type="string" length="10"/>
+            <field name="pre_recording_id" type="integer" notnull="false"/>
+            <field name="post_recording_id" type="integer" notnull="false"/>
+        </table>
+        <table name="advancedpaging_members">
+            <field name="group_id" type="integer" primarykey="true"/>
+            <field name="extension" type="string" length="25" primarykey="true"/>
+        </table>
+    </database>
+    <supported>
+        <version>17.0</version>
+    </supported>
+</module>
