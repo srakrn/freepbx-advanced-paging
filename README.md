@@ -1,14 +1,14 @@
 # Advanced Paging — development foundation
 
-**Not a FreePBX module yet. Do not install or deploy this code.** The paging
-engine, administration interface, database integration, module packaging and
-telephony tests remain to be implemented. In particular, this code does not
-originate calls, control microphones, or play announcements.
+**Development preview. Do not install or deploy this code.** The module has
+an administration page and experimental telephony components, but its
+installation, runtime integration and acceptance testing are incomplete.
 
 The development-only `module.xml`, BMO adapter, and extension-usage hook are
 an integration starting point, not a releasable package. The BMO installation
-hook intentionally rejects installation. The schema still needs a verified
-unique index on group extension before the guard can be removed.
+hook intentionally rejects installation. The standalone schema migrator
+creates a unique group-extension index and has been tested against temporary
+MariaDB, but it is not yet invoked by the guarded installation hook.
 
 The foundation contains a group validator, transactional repository, session
 model, and a transport-independent session controller. The controller orders
@@ -50,6 +50,9 @@ php tests/autoanswer.php
 php tests/runtime_snapshot.php
 php tests/runtime_config.php
 php tests/freepbx_snapshot_adapter.php
+php tests/admin_page.php
+php tests/page_access.php
+php tests/schema.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -58,6 +61,16 @@ the Asterisk binary, modules and XML documentation installed:
 ```sh
 python3 tests/isolated_asterisk.py
 ```
+
+The MySQL-specific schema migration can be tested on a Linux host with
+MariaDB server tools and PHP's PDO MySQL extension:
+
+```sh
+python3 tests/isolated_mariadb.py
+```
+
+It starts a separate temporary MariaDB instance using a private Unix socket
+and no network listener; it does not connect to the FreePBX database.
 
 It starts a second Asterisk process with temporary configuration and its own
 socket, using only Local channels and a temporary loopback-only AMI listener,

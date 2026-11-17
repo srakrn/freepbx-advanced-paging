@@ -143,6 +143,7 @@ final class Advancedpaging implements BMO
         );
         $group = $validator->validate($input, $previous['extension'] ?? null);
         $id = $this->groups->save($group, $id);
+        freepbx_log(FPBX_LOG_NOTICE, 'Advanced Paging group ' . $id . ($previous === null ? ' created' : ' modified'));
         needreload();
         return $id;
     }
@@ -151,6 +152,7 @@ final class Advancedpaging implements BMO
     {
         $deleted = $this->groups->delete($id);
         if ($deleted) {
+            freepbx_log(FPBX_LOG_NOTICE, 'Advanced Paging group ' . $id . ' deleted');
             needreload();
         }
         return $deleted;
