@@ -13,6 +13,11 @@ interface AmiActions
     public function request(array $headers): void;
 }
 
+interface AmiEventActions extends AmiActions
+{
+    public function waitForEvent(callable $predicate, float $timeout): ?array;
+}
+
 /**
  * Playback driver for a session-owned injector.
  *

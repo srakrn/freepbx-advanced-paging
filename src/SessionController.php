@@ -163,8 +163,8 @@ final class SessionController
             $this->effects->cancelPendingCalls();
             if ($this->playbackId !== null) {
                 $oldPlayback = $this->playbackId;
-                $this->playbackId = null;
                 $this->effects->stopPlayback($oldPlayback);
+                $this->playbackId = null;
             }
             if ($this->state() !== Session::POST_PAGE) {
                 $this->cleanup();
@@ -197,15 +197,22 @@ final class SessionController
         }
         $this->session->terminate();
         $this->setupClosed = true;
-        $this->attempt(function (): void {
+        $pendingCancelled = $this->attempt(function (): void {
             $this->effects->cancelPendingCalls();
         });
         if ($this->playbackId !== null) {
             $oldPlayback = $this->playbackId;
-            $this->playbackId = null;
-            $this->attempt(function () use ($oldPlayback): void {
+            if ($this->attempt(function () use ($oldPlayback): void {
                 $this->effects->stopPlayback($oldPlayback);
-            });
+            })) {
+                $this->playbackId = null;
+            } else {
+                // Do not release the group while an injector may still send.
+                return;
+            }
+        }
+        if (!$pendingCancelled) {
+            return;
         }
         $this->cleanup();
     }

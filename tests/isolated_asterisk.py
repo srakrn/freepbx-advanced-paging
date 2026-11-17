@@ -85,6 +85,7 @@ def main():
             "load=app_confbridge.so\n"
             "load=app_waitforring.so\n"
             "load=app_playback.so\n"
+            "load=app_userevent.so\n"
             "load=app_mixmonitor.so\n"
             "load=format_wav.so\n"
         )
@@ -94,7 +95,7 @@ def main():
         ami_secret = secrets.token_hex(24)
         (root / "etc/manager.conf").write_text(
             f"[general]\nenabled=yes\nbindaddr=127.0.0.1\nport={ami_port}\n"
-            f"[aplab]\nsecret={ami_secret}\nread=call\nwrite=call\n"
+            f"[aplab]\nsecret={ami_secret}\nread=call,user\nwrite=call,originate\n"
         )
         (root / "etc/confbridge.conf").write_text(
             "[test_bridge]\ntype=bridge\n"
@@ -105,16 +106,23 @@ def main():
             "[general]\nstatic=yes\nwriteprotect=yes\n"
             "[advancedpaging-lab]\n"
             f"exten => receiver,1,MixMonitor({capture})\n"
-            " same => n,ConfBridge(aplab,test_bridge,test_user)\n"
+            " same => n,ConfBridge(ap-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
-            "exten => initiator,1,ConfBridge(aplab,test_bridge,test_user)\n"
+            "exten => initiator,1,ConfBridge(ap-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
-            "exten => injector,1,ConfBridge(aplab,test_bridge,test_user)\n"
+            "exten => injector,1,ConfBridge(ap-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             f"exten => listener,1,MixMonitor({mute_capture})\n"
             " same => n,ConfBridge(ap-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             "exten => microphone,1,ConfBridge(ap-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            "[advancedpaging-inject]\n"
+            "exten => s,1,ConfBridge(${AP_CONF},test_bridge,test_user)\n"
+            " same => n,Hangup()\n"
+            "[advancedpaging-player]\n"
+            "exten => s,1,Playback(${AP_SOUNDS})\n"
+            " same => n,UserEvent(AdvancedPagingPlayback,PlaybackID:${AP_PLAYBACK_ID},Status:${PLAYBACKSTATUS})\n"
             " same => n,Hangup()\n"
         )
         log = (root / "server.log").open("w+")
@@ -140,7 +148,7 @@ def main():
                 time.sleep(0.1)
             while True:
                 dialplan = cli("dialplan show advancedpaging-lab")
-                if "ConfBridge(aplab" in dialplan:
+                if "ConfBridge(ap-bbbb" in dialplan:
                     break
                 if process.poll() is not None or time.monotonic() > deadline:
                     log.flush()
@@ -154,6 +162,7 @@ def main():
             print(version.strip())
             print(modules.strip())
             print("Isolated dialplan loaded; originating Local test channels.")
+            main_room = "ap-" + "b" * 32
             for name, duration in (("receiver", 30), ("initiator", 2)):
                 output = cli(f"channel originate Local/{name}@advancedpaging-lab application Wait {duration}")
                 if "failed" in output.lower() or "no such command" in output.lower():
@@ -161,7 +170,7 @@ def main():
             deadline = time.monotonic() + 8
             saw_both = False
             while time.monotonic() < deadline:
-                participants = cli("confbridge list aplab")
+                participants = cli("confbridge list " + main_room)
                 if "Local/receiver@" in participants and "Local/initiator@" in participants:
                     saw_both = True
                     break
@@ -171,7 +180,7 @@ def main():
             print("Both initiator and receiver joined the isolated conference.")
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
-                participants = cli("confbridge list aplab")
+                participants = cli("confbridge list " + main_room)
                 if "Local/receiver@" in participants and "Local/initiator@" not in participants:
                     break
                 time.sleep(0.1)
@@ -180,22 +189,20 @@ def main():
             print("Receiver remained connected after initiator hung up.")
             print(participants.strip())
             started = time.monotonic()
-            output = cli("channel originate Local/injector@advancedpaging-lab application Playback post")
-            if "failed" in output.lower() or "no such command" in output.lower():
-                raise RuntimeError("Playback originate failed: " + output)
-            deadline = time.monotonic() + 8
-            seen_injector = False
-            while time.monotonic() < deadline:
-                participants = cli("confbridge list aplab")
-                if "Local/receiver@" not in participants:
-                    raise RuntimeError("Receiver disconnected during playback: " + participants)
-                if "Local/injector@" in participants:
-                    seen_injector = True
-                elif seen_injector:
-                    break
-                time.sleep(0.1)
-            else:
-                raise RuntimeError("Playback injector did not complete: " + participants)
+            env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port),
+                       AP_LAB_AMI_SECRET=ami_secret, AP_LAB_CONFERENCE=main_room)
+            playback_result = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_playback.php")],
+                env=env, capture_output=True, text=True, timeout=15,
+            )
+            if playback_result.returncode:
+                log.flush()
+                log.seek(0)
+                raise RuntimeError("AMI playback failed: " + playback_result.stderr + "\n" + log.read()[-12000:])
+            print(playback_result.stdout.strip())
+            participants = cli("confbridge list " + main_room)
+            if "Local/receiver@" not in participants:
+                raise RuntimeError("Receiver disconnected during playback: " + participants)
             log.flush()
             log.seek(0)
             server_log = log.read()
@@ -205,15 +212,29 @@ def main():
             if elapsed < 1.6:
                 raise RuntimeError(f"Two-second playback ended prematurely after {elapsed:.2f}s.")
             print(f"Playback channel completed after {elapsed:.2f}s with receiver still connected.")
-            result = cli("confbridge kick aplab all")
+            receiver_match = re.search(r"Local/receiver@advancedpaging-lab-[0-9a-fA-F]{8};2", participants)
+            if not receiver_match:
+                raise RuntimeError("Receiver channel name unavailable: " + participants)
+            channel_info = cli("core show channel " + receiver_match.group())
+            unique_match = re.search(r"UniqueID:\s*(\S+)", channel_info, re.IGNORECASE)
+            if not unique_match:
+                raise RuntimeError("Receiver unique ID unavailable: " + channel_info)
+            env.update(AP_LAB_CHANNEL=receiver_match.group(), AP_LAB_UNIQUEID=unique_match.group(1))
+            cleanup = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_cleanup.php")],
+                env=env, capture_output=True, text=True, timeout=12,
+            )
+            if cleanup.returncode:
+                raise RuntimeError("AMI cleanup failed: " + cleanup.stderr + cleanup.stdout)
+            print(cleanup.stdout.strip())
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
-                remaining = cli("confbridge list aplab")
+                remaining = cli("confbridge list " + main_room)
                 if "Local/receiver@" not in remaining:
                     break
                 time.sleep(0.1)
             else:
-                raise RuntimeError("Receiver was not kicked: " + result + remaining)
+                raise RuntimeError("Receiver was not disconnected: " + remaining)
             print("Receiver disconnected after playback completion.")
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:

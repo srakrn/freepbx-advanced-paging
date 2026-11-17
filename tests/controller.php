@@ -96,9 +96,13 @@ $controller->start();
 $controller->receiverJoined('r');
 $controller->setupFinished();
 $controller->initiatorHungUp();
-ensure($controller->state() === Session::TERMINATED, 'Failed playback cancellation did not clean up.');
+ensure($controller->state() === Session::TERMINATING, 'Failed playback cancellation must remain retryable.');
 ensure(!in_array('play:2', $effects->calls, true), 'Closing playback overlapped failed stop.');
-ensure(count($controller->cleanupErrors()) === 1, 'Effect error not retained.');
+ensure(!in_array('release', $effects->calls, true), 'Released resources while playback could still be active.');
+ensure(count($controller->cleanupErrors()) === 2, 'Effect errors not retained.');
+$effects->failOn = null;
+$controller->terminate();
+ensure($controller->state() === Session::TERMINATED, 'Playback cancellation retry failed.');
 
 $effects = new FakeEffects();
 $controller = new SessionController($effects, 'caller', 'duplex', null, null);
