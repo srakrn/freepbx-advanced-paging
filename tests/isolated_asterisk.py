@@ -108,6 +108,10 @@ def main():
             "[test_user]\ntype=user\nquiet=yes\n"
             "[test_sender]\ntype=user\nquiet=yes\nstartmuted=yes\n"
         )
+        worker_dialplan = subprocess.run(
+            ["php", str(pathlib.Path(__file__).parent / "render_worker_dialplan.php")],
+            capture_output=True, text=True, timeout=8, check=True,
+        ).stdout
         (root / "etc/extensions.conf").write_text(
             "[general]\nstatic=yes\nwriteprotect=yes\n"
             "[advancedpaging-lab]\n"
@@ -146,16 +150,7 @@ def main():
             " same => n,Hangup()\n"
             "exten => conc2-caller,1,ConfBridge(ap-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
-            "[advancedpaging-inject]\n"
-            "exten => s,1,ConfBridge(${AP_CONF},test_bridge,test_user)\n"
-            " same => n,Hangup()\n"
-            "[advancedpaging-player]\n"
-            "exten => s,1,Playback(${AP_SOUNDS})\n"
-            " same => n,UserEvent(AdvancedPagingPlayback,PlaybackID:${AP_PLAYBACK_ID},Status:${PLAYBACKSTATUS})\n"
-            " same => n,Hangup()\n"
-            "[advancedpaging-receiver]\n"
-            "exten => s,1,ConfBridge(${AP_CONF},test_bridge,test_sender)\n"
-            " same => n,Hangup()\n"
+            + worker_dialplan
         )
         log = (root / "server.log").open("w+")
         process = subprocess.Popen(

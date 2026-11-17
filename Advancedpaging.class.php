@@ -5,6 +5,7 @@ namespace FreePBX\modules;
 use AdvancedPaging\GroupRepository;
 use AdvancedPaging\GroupValidator;
 use AdvancedPaging\EndpointResolver;
+use AdvancedPaging\AutoAnswerSettings;
 use BMO;
 use InvalidArgumentException;
 use PDO;
@@ -13,6 +14,7 @@ use RuntimeException;
 require_once __DIR__ . '/src/GroupRepository.php';
 require_once __DIR__ . '/src/GroupValidator.php';
 require_once __DIR__ . '/src/EndpointResolver.php';
+require_once __DIR__ . '/src/AutoAnswerSettings.php';
 
 /**
  * Development-only FreePBX adapter. The install guard prevents accidental
@@ -71,6 +73,11 @@ final class Advancedpaging implements BMO
             }
         );
         return $resolver->resolve($members, $callerExtension, $callerDevice);
+    }
+
+    public function getPagingAutoAnswerDefaults(): array
+    {
+        return AutoAnswerSettings::fromPagingDefaults(paging_get_autoanswer_defaults());
     }
 
     public function saveGroup(array $input, ?int $id = null): int

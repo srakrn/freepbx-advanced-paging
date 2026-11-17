@@ -22,8 +22,10 @@ identifiers, feeds the session event router, and waits for cancellation
 evidence. An initial FreePBX Core/AstDB resolver excludes the caller and
 non-idle devices. The resolver and origination path are not yet integrated
 into a production runtime; the PJSIP pre-dial context, runtime supervision and
-reconnection, crash reconciliation, and FreePBX dialplan integration remain
-incomplete. An OS lock alone does not clean up channels after a crash.
+reconnection, crash reconciliation, and dialable group/runtime startup
+integration remain incomplete. Module-owned worker contexts are generated via
+FreePBX's dialplan hook but are not deployed. An OS lock alone does not clean
+up channels after a crash.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
@@ -35,6 +37,7 @@ php tests/ami_resources.php
 php tests/group_lock.php
 php tests/origination.php
 php tests/endpoint_resolver.php
+php tests/autoanswer.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -57,8 +60,10 @@ exercises real per-group locks. A separate test cancels an unanswered
 AMI-originated Local channel and confirms that both Local legs ended. Another
 scenario originates an answering Local receiver and an unanswered receiver,
 cancels the unanswered call at setup close, then checks automatic closing audio
-and cleanup. The tests do **not** verify FreePBX endpoint resolution on actual
-phones, production failure recovery, PJSIP auto-answer, or the module.
+and cleanup. Worker dialplan is rendered using the installed FreePBX command
+classes. The tests do **not** verify FreePBX endpoint resolution on actual
+phones, production failure recovery, actual SIP auto-answer signalling,
+device-specific paging settings, or the module.
 On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 

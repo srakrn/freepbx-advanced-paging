@@ -51,7 +51,7 @@ final class AmiOrigination
      * Only internal endpoints are accepted. Local channels are allowed solely
      * for isolated tests; callers must never pass untrusted dial strings.
      */
-    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false): void
+    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = []): void
     {
         if ($this->submitted || !preg_match('/^ap-[a-f0-9]{32}$/D', $conference)
             || $timeoutMs < 1000 || $timeoutMs > 60000) {
@@ -77,6 +77,12 @@ final class AmiOrigination
             'Variable' => ['__AP_CONF=' . $conference, '__AP_ORIGINATION_ID=' . $this->id],
         ];
         if (!$this->local) {
+            if (!array_key_exists('ALERTINFO', $autoAnswer) || !array_key_exists('CALLINFO', $autoAnswer)
+                || !is_string($autoAnswer['ALERTINFO']) || !is_string($autoAnswer['CALLINFO'])) {
+                throw new InvalidArgumentException('FreePBX auto-answer settings are required.');
+            }
+            $headers['Variable'][] = '__AP_ALERTINFO=' . AutoAnswerSettings::validate($autoAnswer['ALERTINFO']);
+            $headers['Variable'][] = '__AP_CALLINFO=' . AutoAnswerSettings::validate($autoAnswer['CALLINFO']);
             $headers['PreDialGoSub'] = 'advancedpaging-predial,s,1';
         }
         // Mark before writing: an AMI transport failure has an uncertain result.

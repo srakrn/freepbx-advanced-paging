@@ -12,6 +12,9 @@
         <module>recordings ge 17.0.1</module>
         <module>paging ge 17.0.1</module>
     </depends>
+    <methods>
+        <get_config pri="600">advancedpaging_get_config</get_config>
+    </methods>
     <database>
         <table name="advancedpaging_groups">
             <field name="id" type="integer" primarykey="true" autoincrement="true"/>
