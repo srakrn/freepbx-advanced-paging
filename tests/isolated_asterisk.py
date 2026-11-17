@@ -172,6 +172,7 @@ def main():
             "load=func_logic.so\n"
             "load=func_cut.so\n"
             "load=func_channel.so\n"
+            "load=func_uuid.so\n"
         )
         with socket.socket() as probe:
             probe.bind(("127.0.0.1", 0))
@@ -194,6 +195,10 @@ def main():
         )
         worker_dialplan = subprocess.run(
             ["php", str(pathlib.Path(__file__).parent / "render_worker_dialplan.php")],
+            capture_output=True, text=True, timeout=8, check=True,
+        ).stdout
+        group_dialplan = subprocess.run(
+            ["php", str(pathlib.Path(__file__).parent / "render_group_routes.php")],
             capture_output=True, text=True, timeout=8, check=True,
         ).stdout
         freepbx_dialplan = pathlib.Path("/etc/asterisk/extensions_additional.conf").read_text()
@@ -242,6 +247,7 @@ def main():
             "exten => conc2-caller,1,ConfBridge(ap-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             + worker_dialplan
+            + group_dialplan
             + autoanswer_contexts
             + "\n[sub-check-pseries]\nexten => s,1,Return()\n"
         )
@@ -517,6 +523,35 @@ def main():
             if setup_tone < 14000:
                 raise RuntimeError(f"Originated receiver closing playback was truncated: {setup_tone} samples.")
             print(f"Originated receiver captured {setup_tone} audible-amplitude samples.")
+
+            routed_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+                              AP_LAB_LOCK_DIR=str(lock_dir))
+            routed = subprocess.Popen(
+                ["php", str(pathlib.Path(__file__).parent / "ami_routed.php")],
+                env=routed_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            try:
+                ready = routed.stdout.readline()
+                if ready != "READY\n":
+                    raise RuntimeError("Route runtime did not become ready: " + ready + routed.stderr.read())
+                cli("channel originate Local/8555@ext-advancedpaging application Wait 12")
+                stdout, stderr = routed.communicate(timeout=26)
+                if routed.returncode:
+                    log.flush()
+                    log.seek(0)
+                    raise RuntimeError("Dialled group failed: " + stderr + stdout + "\n" + log.read()[-16000:])
+                print(stdout.strip())
+            finally:
+                if routed.poll() is None:
+                    routed.kill()
+                    routed.wait()
+            with wave.open(str(setup_capture), "rb") as recorded:
+                frames = recorded.readframes(recorded.getnframes())
+            samples = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+            route_tone = sum(1 for sample in samples if abs(sample) > 1000)
+            if route_tone < 14000:
+                raise RuntimeError(f"Dialled-group closing playback was truncated: {route_tone} samples.")
+            print(f"Dialled-group receiver captured {route_tone} audible-amplitude samples.")
 
             pjsip_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
                              AP_LAB_CONFERENCE="ap-" + "1" * 32)

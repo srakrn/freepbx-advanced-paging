@@ -1,0 +1,137 @@
+<?php
+
+namespace AdvancedPaging;
+
+use InvalidArgumentException;
+use Throwable;
+
+/**
+ * In-process session startup and shared event coordination.
+ *
+ * A caller must already be in its unique conference, muted, and identified
+ * by a trusted call-control layer. This component does not discover calls,
+ * reconnect AMI, supervise itself, or recover sessions after a crash.
+ */
+final class SessionRuntime
+{
+    private AmiEventActions $ami;
+    private SessionEventRouter $router;
+    private string $lockDirectory;
+    private $recordingResolver;
+    /** @var array<string, array{loop: SessionEventLoop, controller: SessionController, deadline: float}> */
+    private array $sessions = [];
+
+    public function __construct(AmiEventActions $ami, string $lockDirectory, callable $recordingResolver)
+    {
+        $this->ami = $ami;
+        $this->router = new SessionEventRouter($ami);
+        $this->lockDirectory = $lockDirectory;
+        $this->recordingResolver = $recordingResolver;
+    }
+
+    /**
+     * Return the session ID, or null if the group is busy.
+     *
+     * Targets are trusted internal PJSIP endpoint strings. allowLocalForTests
+     * is for isolated tests only and must never be set from a user request.
+     */
+    public function start(
+        int $groupId,
+        string $conference,
+        string $caller,
+        string $callerId,
+        string $mode,
+        ?string $preRecordingId,
+        ?string $postRecordingId,
+        array $targets,
+        array $autoAnswer,
+        float $setupSeconds,
+        bool $allowLocalForTests = false
+    ): ?string {
+        if ($setupSeconds < 1 || $setupSeconds > 60 || !$targets) {
+            throw new InvalidArgumentException('Invalid receiver setup.');
+        }
+        foreach ($targets as $target) {
+            if (!is_string($target)) {
+                throw new InvalidArgumentException('Invalid receiver target.');
+            }
+        }
+        $lock = GroupLock::tryAcquire($this->lockDirectory, $groupId);
+        if ($lock === null) {
+            return null;
+        }
+        $registered = false;
+        try {
+            $resources = new AmiSessionResources($this->ami, static function () use ($lock): void {
+                $lock->release();
+            });
+            $playback = new AmiPlaybackDriver($this->ami, $conference, $this->recordingResolver);
+            $effects = new AsteriskEffects($this->ami, $playback, $resources, $conference);
+            $controller = new SessionController($effects, $caller, $mode, $preRecordingId, $postRecordingId);
+            $loop = new SessionEventLoop($this->ami, $playback, $resources, $controller, $caller, $callerId, []);
+            $loop->startConnecting();
+            $sessionId = $controller->id();
+            $this->router->add($sessionId, $loop);
+            $this->sessions[$sessionId] = [
+                'loop' => $loop,
+                'controller' => $controller,
+                'deadline' => hrtime(true) / 1000000000 + $setupSeconds,
+            ];
+            $registered = true;
+            foreach (array_unique($targets) as $target) {
+                $resources->startOrigination(
+                    new AmiOrigination($this->ami),
+                    $target,
+                    $conference,
+                    (int) ceil($setupSeconds * 1000),
+                    $allowLocalForTests,
+                    $autoAnswer
+                );
+            }
+            return $sessionId;
+        } catch (Throwable $error) {
+            if ($registered) {
+                // Keep the session and group lock registered if any uncertain
+                // AMI operation cannot yet be confirmed as cancelled.
+                $controller->terminate();
+            } else {
+                $lock->release();
+            }
+            throw $error;
+        }
+    }
+
+    /** Process one event and close setup windows without limiting live calls. */
+    public function pump(float $timeout): void
+    {
+        if ($timeout < 0) {
+            throw new InvalidArgumentException('Invalid event timeout.');
+        }
+        $now = hrtime(true) / 1000000000;
+        foreach ($this->sessions as $entry) {
+            if ($entry['controller']->state() === Session::CONNECTING) {
+                $timeout = min($timeout, max(0.0, $entry['deadline'] - $now));
+            }
+        }
+        $this->router->pump($timeout);
+        $now = hrtime(true) / 1000000000;
+        foreach ($this->sessions as $id => $entry) {
+            if ($entry['controller']->state() === Session::CONNECTING && $now >= $entry['deadline']) {
+                $entry['loop']->finishSetup();
+            }
+            if ($entry['controller']->state() === Session::TERMINATED) {
+                unset($this->sessions[$id]);
+            }
+        }
+    }
+
+    public function controller(string $sessionId): ?SessionController
+    {
+        return $this->sessions[$sessionId]['controller'] ?? null;
+    }
+
+    public function count(): int
+    {
+        return count($this->sessions);
+    }
+}

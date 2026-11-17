@@ -50,6 +50,49 @@ function advancedpaging_get_config($engine)
 }
 
 /**
+ * Experimental route generator, intentionally NOT called by get_config.
+ * Caller admission/watchdog and runtime discovery must be completed first;
+ * otherwise a caller could be stranded in an unattended conference.
+ */
+function advancedpaging_generate_group_routes(array $groups)
+{
+    global $ext;
+    $enabled = [];
+    foreach ($groups as $group) {
+        if (empty($group['enabled'])) {
+            continue;
+        }
+        $id = (string) ($group['id'] ?? '');
+        $extension = $group['extension'] ?? null;
+        if (!preg_match('/^[1-9][0-9]*$/D', $id)
+            || !is_string($extension) || !preg_match('/^[0-9]{1,25}$/D', $extension)) {
+            throw new InvalidArgumentException('Invalid paging group route.');
+        }
+        $enabled[] = [$id, $extension];
+    }
+    if (!$enabled) {
+        return;
+    }
+    $ext->addInclude('from-internal-noxfer-additional', 'ext-advancedpaging');
+    foreach ($enabled as [$id, $extension]) {
+        $ext->add('ext-advancedpaging', $extension, '', new ext_goto('1', $id, 'app-advancedpaging'));
+        $context = 'app-advancedpaging';
+        $ext->add($context, $id, '', new ext_set('AP_CONF', 'ap-${FILTER(0-9a-f,${UUID()})}'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,quiet)', 'yes'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,startmuted)', 'yes'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_join_leave)', 'no'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,announce_user_count)', 'no'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,wait_marked)', 'no'));
+        $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,end_marked)', 'no'));
+        $ext->add($context, $id, '', new ext_answer());
+        $ext->add($context, $id, '', new ext_userevent('AdvancedPagingStart',
+            'GroupID:' . $id . ',Conference:${AP_CONF},CallerChannel:${CHANNEL},CallerUniqueid:${UNIQUEID}'));
+        $ext->add($context, $id, '', new ext_confbridge('${AP_CONF}'));
+        $ext->add($context, $id, '', new ext_hangup());
+    }
+}
+
+/**
  * Register extension usage with FreePBX's collision checker. Disabled groups
  * still reserve their numbers so enabling them cannot hijack another route.
  */

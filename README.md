@@ -20,12 +20,14 @@ known-channel resource registry, shared event router, and process-held per-group
 locks exist. An experimental AMI origination tracker preassigns channel
 identifiers, feeds the session event router, and waits for cancellation
 evidence. An initial FreePBX Core/AstDB resolver excludes the caller and
-non-idle devices. The resolver and origination path are not yet integrated
-into a production runtime; the PJSIP pre-dial context, runtime supervision and
-reconnection, crash reconciliation, and dialable group/runtime startup
-integration remain incomplete. Module-owned worker contexts are generated via
-FreePBX's dialplan hook but are not deployed. An OS lock alone does not clean
-up channels after a crash.
+non-idle devices. An in-process session runtime coordinates locking,
+origination, and setup deadlines after a caller has joined. The resolver is
+not yet integrated into a supervised production runtime. Runtime discovery,
+reconnection, crash reconciliation, and caller admission/watchdog remain
+incomplete. An experimental dialable group route generator exists but is
+intentionally not invoked by the FreePBX configuration hook; worker contexts
+are generated but not deployed. An OS lock alone does not clean up channels
+after a crash.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
@@ -61,7 +63,9 @@ AMI-originated Local channel and confirms that both Local legs ended. Another
 scenario originates an answering Local receiver and an unanswered receiver,
 cancels the unanswered call at setup close, then checks automatic closing audio
 and cleanup. Worker dialplan is rendered using the installed FreePBX command
-classes. A synthetic loopback PJSIP endpoint also receives an INVITE with
+classes. Another test dials an experimentally generated group route and hands
+its start event to a test launcher; this launcher is not a production service.
+A synthetic loopback PJSIP endpoint also receives an INVITE with
 FreePBX's default Alert-Info and Call-Info headers, answers, joins, and receives
 a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate
 that a particular phone firmware honors those headers. It also does not verify
