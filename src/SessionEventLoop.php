@@ -10,9 +10,7 @@ use Throwable;
  *
  * This does not originate participants, enforce a group lock, or reconnect
  * AMI. The caller must register exact channel names and unique IDs before
- * start(), and must call pump() from only one thread. A shared runtime must
- * route events to their owning session rather than giving each session its
- * own consumer of the same AMI connection.
+ * start(), and must serialize all events and operations.
  */
 final class SessionEventLoop
 {
@@ -95,8 +93,11 @@ final class SessionEventLoop
         }
     }
 
-    private function dispatch(array $event): void
+    public function dispatch(array $event): void
     {
+        if (!$this->started || $this->controller->state() === Session::TERMINATED) {
+            return;
+        }
         if (($event['Event'] ?? '') === 'Hangup') {
             $this->resources->observe($event);
             $channel = $event['Channel'] ?? '';
@@ -112,5 +113,17 @@ final class SessionEventLoop
         if ($completed !== null) {
             $this->controller->playbackFinished($completed[0], $completed[1]);
         }
+    }
+
+    public function retryCleanup(): void
+    {
+        if ($this->controller->state() === Session::TERMINATING) {
+            $this->controller->terminate();
+        }
+    }
+
+    public function terminated(): bool
+    {
+        return $this->controller->state() === Session::TERMINATED;
     }
 }

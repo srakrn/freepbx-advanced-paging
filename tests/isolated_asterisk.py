@@ -12,6 +12,7 @@ All generated files live in a temporary directory.
 import os
 import pathlib
 import math
+import json
 import re
 import secrets
 import shutil
@@ -56,6 +57,9 @@ def main():
             audio.writeframes(b"".join(struct.pack("<h", sample) for sample in samples))
         mute_capture = root / "mute-receiver.wav"
         auto_capture = root / "automatic-receiver.wav"
+        concurrent_captures = [root / "concurrent-1.wav", root / "concurrent-2.wav"]
+        lock_dir = root / "locks"
+        lock_dir.mkdir(mode=0o700)
         config = root / "asterisk.conf"
         config.write_text(
             "[directories]\n"
@@ -122,6 +126,16 @@ def main():
             " same => n,ConfBridge(ap-cccccccccccccccccccccccccccccccc,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             "exten => auto-caller,1,ConfBridge(ap-cccccccccccccccccccccccccccccccc,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            f"exten => conc1-receiver,1,MixMonitor({concurrent_captures[0]})\n"
+            " same => n,ConfBridge(ap-dddddddddddddddddddddddddddddddd,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            "exten => conc1-caller,1,ConfBridge(ap-dddddddddddddddddddddddddddddddd,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            f"exten => conc2-receiver,1,MixMonitor({concurrent_captures[1]})\n"
+            " same => n,ConfBridge(ap-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            "exten => conc2-caller,1,ConfBridge(ap-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
             "[advancedpaging-inject]\n"
             "exten => s,1,ConfBridge(${AP_CONF},test_bridge,test_user)\n"
@@ -352,6 +366,46 @@ def main():
             if automatic_tone < 14000:
                 raise RuntimeError(f"Automatic closing playback was truncated: {automatic_tone} samples.")
             print(f"Automatic receiver captured {automatic_tone} audible-amplitude samples.")
+
+            for name, duration in (("conc1-receiver", 35), ("conc2-receiver", 35),
+                                   ("conc1-caller", 6), ("conc2-caller", 11)):
+                cli(f"channel originate Local/{name}@advancedpaging-lab application Wait {duration}")
+            settings = []
+            for index, letter in ((1, "d"), (2, "e")):
+                room = "ap-" + letter * 32
+                deadline = time.monotonic() + 4
+                while True:
+                    participants = cli("confbridge list " + room)
+                    caller_match = re.search(fr"Local/conc{index}-caller@advancedpaging-lab-[0-9a-fA-F]{{8}};2", participants)
+                    receiver_match = re.search(fr"Local/conc{index}-receiver@advancedpaging-lab-[0-9a-fA-F]{{8}};2", participants)
+                    if caller_match and receiver_match:
+                        break
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Concurrent channels did not join: " + participants)
+                    time.sleep(0.1)
+                settings.append({"room": room, "caller": caller_match.group(),
+                                 "caller_id": channel_unique_id(caller_match.group()),
+                                 "receiver": receiver_match.group(),
+                                 "receiver_id": channel_unique_id(receiver_match.group())})
+            concurrent_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
+                                  AP_LAB_LOCK_DIR=str(lock_dir), AP_LAB_SESSIONS=json.dumps(settings))
+            concurrent = subprocess.run(
+                ["php", str(pathlib.Path(__file__).parent / "ami_concurrent.php")],
+                env=concurrent_env, capture_output=True, text=True, timeout=28,
+            )
+            if concurrent.returncode:
+                log.flush()
+                log.seek(0)
+                raise RuntimeError("Concurrent session failed: " + concurrent.stderr + concurrent.stdout + "\n" + log.read()[-12000:])
+            print(concurrent.stdout.strip())
+            for capture in concurrent_captures:
+                with wave.open(str(capture), "rb") as recorded:
+                    frames = recorded.readframes(recorded.getnframes())
+                samples = struct.unpack("<" + "h" * (len(frames) // 2), frames)
+                count = sum(1 for sample in samples if abs(sample) > 1000)
+                if count < 14000:
+                    raise RuntimeError(f"Concurrent closing playback was truncated: {count} samples.")
+                print(f"Concurrent receiver captured {count} audible-amplitude samples.")
         finally:
             if process.poll() is None:
                 process.terminate()
