@@ -1,0 +1,39 @@
+#!/usr/bin/env php
+<?php
+
+// Development preview. Do not deploy until module install and recovery gates
+// are lifted and the documented PJSIP/hardware acceptance tests pass.
+foreach (['Session', 'SessionController', 'AsteriskEffects', 'AmiConnection', 'AmiPlaybackDriver',
+    'AmiSessionResources', 'AmiOrigination', 'SessionEventLoop', 'SessionEventRouter', 'GroupLock',
+    'SessionRuntime', 'AdmissionCoordinator', 'CrashRecovery', 'RuntimeBootstrap', 'AutoAnswerSettings',
+    'RuntimeConfig', 'RuntimeService'] as $file) {
+    require_once __DIR__ . '/../src/' . $file . '.php';
+}
+
+use AdvancedPaging\RuntimeConfig;
+use AdvancedPaging\RuntimeService;
+
+try {
+    $bootstrap_settings['freepbx_auth'] = false;
+    require_once '/etc/freepbx.conf';
+    $module = \FreePBX::Advancedpaging();
+    $config = RuntimeConfig::read('/etc/asterisk/advancedpaging-runtime.ini');
+    $service = new RuntimeService(
+        static function () use ($config) { return RuntimeConfig::connect($config); },
+        '/run/advancedpaging',
+        static function (int $group, array $event) use ($module): array {
+            return $module->loadRuntimeSnapshot($group, $event);
+        },
+        static function (string $id): string {
+            throw new RuntimeException('Session recording snapshot is required.');
+        },
+        static function (string $message): void { error_log($message); },
+        static function (): void { error_log('Advanced Paging runtime ready.'); }
+    );
+    $service->run();
+} catch (Throwable $error) {
+    // Never print exception text: FreePBX or transport exceptions may include
+    // credentials. Operators can inspect platform logs for diagnostics.
+    error_log('Advanced Paging runtime stopped after a startup or recovery error.');
+    exit(1);
+}

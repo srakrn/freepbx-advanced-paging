@@ -16,6 +16,7 @@ import json
 import re
 import secrets
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -182,6 +183,11 @@ def main():
             f"[general]\nenabled=yes\nbindaddr=127.0.0.1\nport={ami_port}\n"
             f"[aplab]\nsecret={ami_secret}\nread=call,user,reporting,system\nwrite=call,originate,reporting,system\n"
         )
+        service_config = root / "runtime.ini"
+        service_config.write_text(
+            f"host=127.0.0.1\nport={ami_port}\nusername=aplab\nsecret={ami_secret}\n"
+        )
+        service_config.chmod(0o600)
         (root / "etc/confbridge.conf").write_text(
             "[test_bridge]\ntype=bridge\n"
             "[test_user]\ntype=user\nquiet=yes\n"
@@ -541,10 +547,9 @@ def main():
                 time.sleep(0.1)
             print("Unadmitted dialled caller disconnected by the setup watchdog.")
 
-            routed_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
-                              AP_LAB_LOCK_DIR=str(lock_dir))
+            routed_env = dict(os.environ, AP_LAB_CONFIG=str(service_config), AP_LAB_LOCK_DIR=str(lock_dir))
             routed = subprocess.Popen(
-                ["php", str(pathlib.Path(__file__).parent / "ami_routed.php")],
+                ["php", str(pathlib.Path(__file__).parent / "service_runner.php")],
                 env=routed_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             )
             try:
@@ -569,12 +574,24 @@ def main():
                         raise RuntimeError("Busy routed caller was not rejected by the watchdog.")
                     time.sleep(0.1)
                 print("Second caller to the active group was rejected by the admission watchdog.")
-                stdout, stderr = routed.communicate(timeout=26)
+                deadline = time.monotonic() + 18
+                while True:
+                    remaining = cli("core show channels concise")
+                    if ("Local/8555@ext-advancedpaging" not in remaining
+                            and "Local/answer@advancedpaging-lab" not in remaining):
+                        break
+                    if routed.poll() is not None or time.monotonic() > deadline:
+                        raise RuntimeError("Routed session did not complete.")
+                    time.sleep(0.1)
+                routed.send_signal(signal.SIGTERM)
+                stdout, stderr = routed.communicate(timeout=15)
                 if routed.returncode:
                     log.flush()
                     log.seek(0)
                     raise RuntimeError("Dialled group failed: " + stderr + stdout + "\n" + log.read()[-16000:])
-                print(stdout.strip())
+                if "STOPPED" not in stdout:
+                    raise RuntimeError("Service did not stop cleanly: " + stdout + stderr)
+                print("Foreground service admitted the dialled group and stopped cleanly on SIGTERM.")
             finally:
                 if routed.poll() is None:
                     routed.kill()
@@ -596,7 +613,7 @@ def main():
                     raise RuntimeError("Unrelated recovery-control conference did not start.")
                 time.sleep(0.1)
             crashed = subprocess.Popen(
-                ["php", str(pathlib.Path(__file__).parent / "ami_routed.php")],
+                ["php", str(pathlib.Path(__file__).parent / "service_runner.php")],
                 env=routed_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
             )
             try:
@@ -611,7 +628,7 @@ def main():
                 crashed.kill()
                 crashed.wait(timeout=5)
                 restarted = subprocess.Popen(
-                    ["php", str(pathlib.Path(__file__).parent / "ami_routed.php")],
+                    ["php", str(pathlib.Path(__file__).parent / "service_runner.php")],
                     env=routed_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 )
                 try:
@@ -619,8 +636,10 @@ def main():
                         raise RuntimeError("Restart recovery failed: " + restarted.stderr.read())
                 finally:
                     if restarted.poll() is None:
-                        restarted.kill()
-                        restarted.wait()
+                        restarted.send_signal(signal.SIGTERM)
+                        out, err = restarted.communicate(timeout=15)
+                        if restarted.returncode or "STOPPED" not in out:
+                            raise RuntimeError("Restarted service did not stop cleanly: " + out + err)
                 if "Local/8555@ext-advancedpaging" in cli("core show channels concise"):
                     raise RuntimeError("Crashed session caller remains connected.")
                 if "Local/answer@advancedpaging-lab" in cli("core show channels concise"):

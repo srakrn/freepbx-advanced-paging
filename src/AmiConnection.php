@@ -85,6 +85,13 @@ final class AmiConnection implements AmiEventActions
         return $events;
     }
 
+    public function close(): void
+    {
+        if (is_resource($this->socket)) {
+            fclose($this->socket);
+        }
+    }
+
     /**
      * Consume one matching AMI event while retaining unrelated events.
      * Returns null on timeout. This connection must have a finite read timeout.

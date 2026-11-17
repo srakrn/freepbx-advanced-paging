@@ -25,9 +25,12 @@ An in-process session runtime coordinates locking, origination, and setup
 deadlines after a caller has joined. An admission coordinator and pre-answer
 dialplan watchdog are exercised in isolation. A runtime bootstrap acquires a
 singleton lock and reconciles owned rooms and channels before admission.
-The FreePBX loader is not yet wired to a supervised production service;
-process startup, reconnection, and recovery across all failure modes remain
-incomplete. An experimental
+The development-preview foreground entry point now uses the FreePBX loader and
+an external protected AMI credential file; a systemd unit is supplied as an
+uninstalled template. Its service loop and recovery have only been tested with
+an isolated Asterisk and test configuration adapter. Deployment, real FreePBX
+bootstrap, systemd operation, and recovery across all failure modes remain
+unverified. An experimental
 dialable group route generator exists but is
 intentionally not invoked by the FreePBX configuration hook; worker contexts
 are generated but not deployed. An OS lock alone does not clean up channels
@@ -45,6 +48,8 @@ php tests/origination.php
 php tests/endpoint_resolver.php
 php tests/autoanswer.php
 php tests/runtime_snapshot.php
+php tests/runtime_config.php
+php tests/freepbx_snapshot_adapter.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -69,8 +74,8 @@ scenario originates an answering Local receiver and an unanswered receiver,
 cancels the unanswered call at setup close, then checks automatic closing audio
 and cleanup. Worker dialplan is rendered using the installed FreePBX command
 classes. Another test dials an experimentally generated group route through the
-admission coordinator and a test launcher; the launcher is not a production
-service. The test checks that unacknowledged and same-group callers are
+admission coordinator and the foreground service loop with a test snapshot
+adapter. The test checks that unacknowledged and same-group callers are
 rejected before conference admission. It kills a running test controller and
 checks that the next bootstrap removes its abandoned channels without
 disconnecting an unrelated conference.
@@ -88,6 +93,14 @@ FreePBX `autoanswer`, `func-set-sipheader`, and `func-apply-sipheaders`
 contexts, with a test stub for the P-series helper.
 On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
+
+`packaging/advancedpaging.service` and `bin/advancedpaging-runtime` are
+development previews and must not be installed yet. The dedicated AMI
+credential file is expected at `/etc/asterisk/advancedpaging-runtime.ini` and
+must not be world-readable or group-writable. Startup reconciliation requires
+AMI reporting and system privileges for channel listing on the tested
+Asterisk version; these privileges are broad and require security review before
+deployment. No credential file or service has been installed.
 
 ## Platform investigation
 

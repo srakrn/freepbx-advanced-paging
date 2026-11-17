@@ -1,0 +1,22 @@
+[Unit]
+Description=FreePBX Advanced Paging controller (development preview)
+After=asterisk.service
+Requires=asterisk.service
+
+[Service]
+Type=simple
+User=asterisk
+Group=asterisk
+RuntimeDirectory=advancedpaging
+RuntimeDirectoryMode=0700
+ExecStart=/usr/bin/php /var/www/html/admin/modules/advancedpaging/bin/advancedpaging-runtime
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/run/advancedpaging /var/log/asterisk
+
+[Install]
+WantedBy=multi-user.target
