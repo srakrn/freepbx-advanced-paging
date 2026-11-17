@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Exercise ConfBridge on a separate, non-networked Asterisk instance.
+"""Exercise ConfBridge on a separate, isolated Asterisk instance.
 
 Run on a Linux host with Asterisk and its modules installed:
     python3 tests/isolated_asterisk.py
 
 This never connects to the host PBX socket, originates SIP calls, or loads
-the host PBX configuration. All generated files live in a temporary directory.
+the host PBX configuration. A temporary AMI listener binds only to localhost.
+All generated files live in a temporary directory.
 """
 
 import os
 import pathlib
 import math
+import re
+import secrets
 import shutil
+import socket
 import struct
 import subprocess
 import tempfile
@@ -84,6 +88,14 @@ def main():
             "load=app_mixmonitor.so\n"
             "load=format_wav.so\n"
         )
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            ami_port = probe.getsockname()[1]
+        ami_secret = secrets.token_hex(24)
+        (root / "etc/manager.conf").write_text(
+            f"[general]\nenabled=yes\nbindaddr=127.0.0.1\nport={ami_port}\n"
+            f"[aplab]\nsecret={ami_secret}\nread=call\nwrite=call\n"
+        )
         (root / "etc/confbridge.conf").write_text(
             "[test_bridge]\ntype=bridge\n"
             "[test_user]\ntype=user\nquiet=yes\n"
@@ -100,9 +112,9 @@ def main():
             "exten => injector,1,ConfBridge(aplab,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             f"exten => listener,1,MixMonitor({mute_capture})\n"
-            " same => n,ConfBridge(mutelab,test_bridge,test_user)\n"
+            " same => n,ConfBridge(ap-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
-            "exten => microphone,1,ConfBridge(mutelab,test_bridge,test_sender)\n"
+            "exten => microphone,1,ConfBridge(ap-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,test_bridge,test_sender)\n"
             " same => n,Hangup()\n"
         )
         log = (root / "server.log").open("w+")
@@ -222,24 +234,41 @@ def main():
                 raise RuntimeError("Receiver capture did not contain the expected tone.")
             print(f"Receiver capture contained {tone_samples} audible-amplitude samples.")
 
+            mute_room = "ap-" + "a" * 32
             cli("channel originate Local/listener@advancedpaging-lab application Wait 20")
             deadline = time.monotonic() + 5
-            while "Local/listener@" not in cli("confbridge list mutelab"):
+            while "Local/listener@" not in cli("confbridge list " + mute_room):
                 if time.monotonic() > deadline:
                     raise RuntimeError("Mute-test listener did not join.")
                 time.sleep(0.1)
             cli("channel originate Local/microphone@advancedpaging-lab application Playback microphone")
             deadline = time.monotonic() + 5
-            while "Local/microphone@" not in cli("confbridge list mutelab"):
+            while True:
+                participants = cli("confbridge list " + mute_room)
+                match = re.search(r"Local/microphone@advancedpaging-lab-[0-9a-fA-F]{8};2", participants)
+                if match:
+                    break
                 if time.monotonic() > deadline:
                     raise RuntimeError("Mute-test sender did not join.")
                 time.sleep(0.1)
+
+            def ami_mute(muted):
+                env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port),
+                           AP_LAB_AMI_SECRET=ami_secret, AP_LAB_CONFERENCE=mute_room,
+                           AP_LAB_CHANNEL=match.group(), AP_LAB_MUTE="1" if muted else "0")
+                result = subprocess.run(
+                    ["php", str(pathlib.Path(__file__).parent / "ami_mute.php")],
+                    env=env, capture_output=True, text=True, timeout=6,
+                )
+                if result.returncode:
+                    raise RuntimeError("AMI mute effect failed: " + result.stderr + result.stdout)
+
             time.sleep(1.5)
-            cli("confbridge unmute mutelab Local/microphone@advancedpaging-lab")
+            ami_mute(False)
             time.sleep(1.5)
-            cli("confbridge mute mutelab Local/microphone@advancedpaging-lab")
+            ami_mute(True)
             time.sleep(1.5)
-            cli("confbridge kick mutelab all")
+            cli("confbridge kick " + mute_room + " all")
             time.sleep(0.5)
             with wave.open(str(mute_capture), "rb") as recorded:
                 frames = recorded.readframes(recorded.getnframes())
@@ -250,7 +279,7 @@ def main():
             beginning, middle, end = level(values[:8000]), level(values[8000:-8000]), level(values[-8000:])
             if beginning > 100 or middle < 3000 or end > 100:
                 raise RuntimeError(f"Unexpected muted/unmuted audio: {beginning}, {middle}, {end}.")
-            print(f"Muted/unmuted/muted receiver samples: {beginning}, {middle}, {end}.")
+            print(f"AMI adapter muted/unmuted/muted receiver samples: {beginning}, {middle}, {end}.")
         finally:
             if process.poll() is None:
                 process.terminate()

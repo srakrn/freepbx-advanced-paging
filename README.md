@@ -15,13 +15,15 @@ model, and a transport-independent session controller. The controller orders
 effects and handles duplicate events, but it has no Asterisk effects adapter.
 The eventual runtime must serialize events, atomically lock each group,
 coordinate actual Asterisk operation completion, and clean up calls on failure.
-The controller is tested with a fake adapter only.
+An initial AMI effects adapter and synchronous connection exist, but the
+playback driver, resource registry, and event loop are not implemented.
 
 Run the basic tests with PHP 7.4 or later and the PDO SQLite extension:
 
 ```sh
 php tests/run.php
 php tests/controller.php
+php tests/asterisk_effects.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -32,10 +34,11 @@ python3 tests/isolated_asterisk.py
 ```
 
 It starts a second Asterisk process with temporary configuration and its own
-socket, using only Local channels, and tears it down afterwards. It exercises
+socket, using only Local channels and a temporary loopback-only AMI listener,
+and tears it down afterwards. It exercises
 receiver survival after initiator hangup, captured playback audio, a timed
-Playback injector followed by a kick, and ConfBridge mute/unmute using a
-simulated microphone and a receiver capture. It does **not** verify automatic
+Playback injector followed by a kick, and AMI adapter ConfBridge mute/unmute
+using a simulated microphone and a receiver capture. It does **not** verify automatic
 production call control, PJSIP, or the module. On `eich-pbx` the installed
 binary is 22.11.0 while the running PBX is 22.10.1.
 
