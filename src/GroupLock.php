@@ -29,13 +29,24 @@ final class GroupLock
         if ($groupId < 1) {
             throw new InvalidArgumentException('Invalid group ID.');
         }
+        return self::acquire($directory, 'group-' . $groupId . '.lock', $groupId);
+    }
+
+    /** Dedicated process-wide lock; not in the numeric group lock namespace. */
+    public static function tryAcquireRuntime(string $directory): ?self
+    {
+        return self::acquire($directory, 'runtime.lock', 0);
+    }
+
+    private static function acquire(string $directory, string $filename, int $groupId): ?self
+    {
         $dir = realpath($directory);
         $info = $dir === false ? false : stat($dir);
         if ($info === false || !is_dir($dir) || ($info['mode'] & 0022) !== 0
             || (function_exists('posix_geteuid') && $info['uid'] !== posix_geteuid())) {
             throw new RuntimeException('Group lock directory is not private and owned by the runtime user.');
         }
-        $path = $dir . '/group-' . $groupId . '.lock';
+        $path = $dir . '/' . $filename;
         if (is_link($path)) {
             throw new RuntimeException('Group lock file must not be a symlink.');
         }

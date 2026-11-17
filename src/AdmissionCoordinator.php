@@ -92,11 +92,18 @@ final class AdmissionCoordinator
             && ($event['Conference'] ?? '') === $pending['conference']) {
             $snapshot = $pending['snapshot'];
             try {
+                $recordings = $snapshot['recording_files'] ?? null;
+                $resolver = is_array($recordings) ? static function (string $id) use ($recordings): string {
+                    if (!isset($recordings[$id]) || !is_string($recordings[$id])) {
+                        throw new RuntimeException('Snapshot recording is unavailable.');
+                    }
+                    return $recordings[$id];
+                } : null;
                 $id = $this->runtime->start(
                     $pending['group'], $pending['conference'], $pending['channel'], $uniqueId,
                     $snapshot['mode'], $snapshot['pre'], $snapshot['post'], $snapshot['targets'],
                     $snapshot['auto_answer'], $snapshot['setup_seconds'], $this->allowLocalForTests,
-                    $pending['lock']
+                    $pending['lock'], $resolver
                 );
                 if ($id === null) {
                     throw new RuntimeException('Reserved group became unavailable.');

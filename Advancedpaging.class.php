@@ -6,6 +6,7 @@ use AdvancedPaging\GroupRepository;
 use AdvancedPaging\GroupValidator;
 use AdvancedPaging\EndpointResolver;
 use AdvancedPaging\AutoAnswerSettings;
+use AdvancedPaging\RuntimeSnapshot;
 use BMO;
 use InvalidArgumentException;
 use PDO;
@@ -15,6 +16,7 @@ require_once __DIR__ . '/src/GroupRepository.php';
 require_once __DIR__ . '/src/GroupValidator.php';
 require_once __DIR__ . '/src/EndpointResolver.php';
 require_once __DIR__ . '/src/AutoAnswerSettings.php';
+require_once __DIR__ . '/src/RuntimeSnapshot.php';
 
 /**
  * Development-only FreePBX adapter. The install guard prevents accidental
@@ -78,6 +80,47 @@ final class Advancedpaging implements BMO
     public function getPagingAutoAnswerDefaults(): array
     {
         return AutoAnswerSettings::fromPagingDefaults(paging_get_autoanswer_defaults());
+    }
+
+    /** Resolve configuration and media once, without exposing credentials. */
+    public function loadRuntimeSnapshot(int $groupId, array $event): array
+    {
+        $manager = $this->freepbx->astman;
+        if (!$manager->connected()) {
+            throw new RuntimeException('Asterisk manager is unavailable.');
+        }
+        $loader = new RuntimeSnapshot(
+            function (int $id): ?array { return $this->getGroup($id); },
+            function (string $device) use ($manager) {
+                $record = $this->freepbx->Core->getDevice($device);
+                if (strtolower((string) ($record['tech'] ?? '')) !== 'pjsip'
+                    || (string) ($record['id'] ?? '') !== $device) {
+                    return null;
+                }
+                $user = $manager->database_get('DEVICE', $device . '/user');
+                $users = $this->freepbx->Core->getAllUsers();
+                return is_string($user) && isset($users[$user]) ? $user : null;
+            },
+            function (array $members, string $caller, string $device): array {
+                return $this->resolveEligibleDevices($members, $caller, $device);
+            },
+            function (): array { return $this->getPagingAutoAnswerDefaults(); },
+            function (string $id) use ($groupId): string {
+                $record = $this->freepbx->Recordings->getRecordingById($id);
+                if (empty($record['filename']) || empty($record['soundlist'])) {
+                    freepbx_log(FPBX_LOG_WARNING, 'Advanced Paging: missing recording ' . $id . ' for group ' . $groupId);
+                    return '';
+                }
+                foreach ($record['soundlist'] as $sound) {
+                    if (empty($sound['languages'])) {
+                        freepbx_log(FPBX_LOG_WARNING, 'Advanced Paging: unavailable recording ' . $id . ' for group ' . $groupId);
+                        return '';
+                    }
+                }
+                return (string) $record['filename'];
+            }
+        );
+        return $loader->load($groupId, $event);
     }
 
     public function saveGroup(array $input, ?int $id = null): int

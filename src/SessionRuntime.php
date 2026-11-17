@@ -47,7 +47,8 @@ final class SessionRuntime
         array $autoAnswer,
         float $setupSeconds,
         bool $allowLocalForTests = false,
-        ?GroupLock $reservation = null
+        ?GroupLock $reservation = null,
+        ?callable $sessionRecordingResolver = null
     ): ?string {
         if ($setupSeconds < 1 || $setupSeconds > 60 || !$targets) {
             throw new InvalidArgumentException('Invalid receiver setup.');
@@ -69,7 +70,7 @@ final class SessionRuntime
             $resources = new AmiSessionResources($this->ami, static function () use ($lock): void {
                 $lock->release();
             });
-            $playback = new AmiPlaybackDriver($this->ami, $conference, $this->recordingResolver);
+            $playback = new AmiPlaybackDriver($this->ami, $conference, $sessionRecordingResolver ?? $this->recordingResolver);
             $effects = new AsteriskEffects($this->ami, $playback, $resources, $conference);
             $controller = new SessionController($effects, $caller, $mode, $preRecordingId, $postRecordingId);
             $loop = new SessionEventLoop($this->ami, $playback, $resources, $controller, $caller, $callerId, []);

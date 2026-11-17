@@ -180,7 +180,7 @@ def main():
         ami_secret = secrets.token_hex(24)
         (root / "etc/manager.conf").write_text(
             f"[general]\nenabled=yes\nbindaddr=127.0.0.1\nport={ami_port}\n"
-            f"[aplab]\nsecret={ami_secret}\nread=call,user\nwrite=call,originate\n"
+            f"[aplab]\nsecret={ami_secret}\nread=call,user,reporting,system\nwrite=call,originate,reporting,system\n"
         )
         (root / "etc/confbridge.conf").write_text(
             "[test_bridge]\ntype=bridge\n"
@@ -218,6 +218,8 @@ def main():
             " same => n,Wait(30)\n"
             " same => n,Hangup()\n"
             "exten => setup-caller,1,ConfBridge(ap-ffffffffffffffffffffffffffffffff,test_bridge,test_sender)\n"
+            " same => n,Hangup()\n"
+            "exten => unrelated,1,ConfBridge(unrelated,test_bridge,test_user)\n"
             " same => n,Hangup()\n"
             f"exten => receiver,1,MixMonitor({capture})\n"
             " same => n,ConfBridge(ap-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,test_bridge,test_user)\n"
@@ -584,6 +586,54 @@ def main():
             if route_tone < 14000:
                 raise RuntimeError(f"Dialled-group closing playback was truncated: {route_tone} samples.")
             print(f"Dialled-group receiver captured {route_tone} audible-amplitude samples.")
+
+            # Simulate a controller crash with a caller and receiver in a
+            # session. A separate unrelated room must survive reconciliation.
+            cli("channel originate Local/unrelated@advancedpaging-lab application Wait 30")
+            deadline = time.monotonic() + 4
+            while "Local/unrelated@" not in cli("confbridge list unrelated"):
+                if time.monotonic() > deadline:
+                    raise RuntimeError("Unrelated recovery-control conference did not start.")
+                time.sleep(0.1)
+            crashed = subprocess.Popen(
+                ["php", str(pathlib.Path(__file__).parent / "ami_routed.php")],
+                env=routed_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            try:
+                if crashed.stdout.readline() != "READY\n":
+                    raise RuntimeError("Crash test controller did not start: " + crashed.stderr.read())
+                cli("channel originate Local/8555@ext-advancedpaging application Wait 25")
+                deadline = time.monotonic() + 6
+                while "Local/answer@advancedpaging-lab" not in cli("core show channels concise"):
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Crash test receiver did not start.")
+                    time.sleep(0.1)
+                crashed.kill()
+                crashed.wait(timeout=5)
+                restarted = subprocess.Popen(
+                    ["php", str(pathlib.Path(__file__).parent / "ami_routed.php")],
+                    env=routed_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                try:
+                    if restarted.stdout.readline() != "READY\n":
+                        raise RuntimeError("Restart recovery failed: " + restarted.stderr.read())
+                finally:
+                    if restarted.poll() is None:
+                        restarted.kill()
+                        restarted.wait()
+                if "Local/8555@ext-advancedpaging" in cli("core show channels concise"):
+                    raise RuntimeError("Crashed session caller remains connected.")
+                if "Local/answer@advancedpaging-lab" in cli("core show channels concise"):
+                    raise RuntimeError("Crashed session receiver remains connected.")
+                if "Local/unrelated@" not in cli("confbridge list unrelated"):
+                    raise RuntimeError("Recovery disrupted an unrelated conference.")
+                print("Restarted runtime confirmed all owned rooms and channels ended before admission.")
+                print("Unrelated conference remained connected after crash recovery.")
+            finally:
+                if crashed.poll() is None:
+                    crashed.kill()
+                    crashed.wait()
+                cli("confbridge kick unrelated all")
 
             pjsip_env = dict(os.environ, AP_LAB_AMI_PORT=str(ami_port), AP_LAB_AMI_SECRET=ami_secret,
                              AP_LAB_CONFERENCE="ap-" + "1" * 32)

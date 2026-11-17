@@ -19,13 +19,15 @@ An initial AMI effects adapter, synchronous connection, playback driver,
 known-channel resource registry, shared event router, and process-held per-group
 locks exist. An experimental AMI origination tracker preassigns channel
 identifiers, feeds the session event router, and waits for cancellation
-evidence. An initial FreePBX Core/AstDB resolver excludes the caller and
-non-idle devices. An in-process session runtime coordinates locking,
-origination, and setup deadlines after a caller has joined. An admission
-coordinator and pre-answer dialplan watchdog are exercised in isolation, but
-the resolver is not yet integrated into a supervised production runtime.
-Runtime process startup, reconnection, crash reconciliation, and recovery after
-an admitted caller or receiver is stranded remain incomplete. An experimental
+evidence. A FreePBX Core/AstDB snapshot loader excludes the caller and
+non-idle devices, and snapshots recording references for each session.
+An in-process session runtime coordinates locking, origination, and setup
+deadlines after a caller has joined. An admission coordinator and pre-answer
+dialplan watchdog are exercised in isolation. A runtime bootstrap acquires a
+singleton lock and reconciles owned rooms and channels before admission.
+The FreePBX loader is not yet wired to a supervised production service;
+process startup, reconnection, and recovery across all failure modes remain
+incomplete. An experimental
 dialable group route generator exists but is
 intentionally not invoked by the FreePBX configuration hook; worker contexts
 are generated but not deployed. An OS lock alone does not clean up channels
@@ -42,6 +44,7 @@ php tests/group_lock.php
 php tests/origination.php
 php tests/endpoint_resolver.php
 php tests/autoanswer.php
+php tests/runtime_snapshot.php
 ```
 
 An isolated Asterisk lifecycle experiment is available on a Linux system with
@@ -68,7 +71,9 @@ and cleanup. Worker dialplan is rendered using the installed FreePBX command
 classes. Another test dials an experimentally generated group route through the
 admission coordinator and a test launcher; the launcher is not a production
 service. The test checks that unacknowledged and same-group callers are
-rejected before conference admission.
+rejected before conference admission. It kills a running test controller and
+checks that the next bootstrap removes its abandoned channels without
+disconnecting an unrelated conference.
 A synthetic loopback PJSIP endpoint also receives an INVITE with
 FreePBX's default Alert-Info and Call-Info headers, answers, joins, and receives
 a BYE on cleanup. It answers unconditionally; the test does **not** demonstrate

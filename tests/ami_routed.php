@@ -2,13 +2,12 @@
 
 foreach (['Session', 'SessionController', 'AsteriskEffects', 'AmiConnection', 'AmiPlaybackDriver',
     'AmiSessionResources', 'AmiOrigination', 'SessionEventLoop', 'SessionEventRouter', 'GroupLock',
-    'SessionRuntime', 'AdmissionCoordinator'] as $file) {
+    'SessionRuntime', 'AdmissionCoordinator', 'CrashRecovery', 'RuntimeBootstrap'] as $file) {
     require_once __DIR__ . '/../src/' . $file . '.php';
 }
 
 use AdvancedPaging\AmiConnection;
-use AdvancedPaging\AdmissionCoordinator;
-use AdvancedPaging\SessionRuntime;
+use AdvancedPaging\RuntimeBootstrap;
 
 $socket = stream_socket_client('tcp://127.0.0.1:' . getenv('AP_LAB_AMI_PORT'), $errno, $errstr, 3);
 if (!$socket) {
@@ -20,9 +19,8 @@ if (strpos((string) fgets($socket), 'Asterisk Call Manager/') !== 0) {
 }
 $ami = new AmiConnection($socket);
 $ami->request(['Action' => 'Login', 'Username' => 'aplab', 'Secret' => getenv('AP_LAB_AMI_SECRET'), 'Events' => 'on']);
-$runtime = new SessionRuntime($ami, getenv('AP_LAB_LOCK_DIR'), static function (string $id): string { return 'post'; });
 $loaded = false;
-$admission = new AdmissionCoordinator($ami, $runtime, getenv('AP_LAB_LOCK_DIR'),
+$runtime = RuntimeBootstrap::start($ami, getenv('AP_LAB_LOCK_DIR'),
     static function (int $group, array $event) use (&$loaded): array {
         if ($group !== 11) {
             throw new RuntimeException('Unexpected group.');
@@ -32,21 +30,23 @@ $admission = new AdmissionCoordinator($ami, $runtime, getenv('AP_LAB_LOCK_DIR'),
             'mode' => 'duplex', 'pre' => null, 'post' => '1',
             'targets' => ['Local/answer@advancedpaging-lab/n'],
             'auto_answer' => [], 'setup_seconds' => 3.0,
+            'recording_files' => ['1' => 'post'],
         ];
-    }, true);
+    }, static function (string $id): string { throw new RuntimeException('Snapshot resolver was not used.'); }, true);
 echo "READY\n";
 flush();
 $sawSession = false;
 $deadline = microtime(true) + 20; // Isolated test watchdog.
 while (microtime(true) < $deadline) {
-    $admission->pump(1.0);
-    $sawSession = $sawSession || $runtime->count() > 0;
-    if ($sawSession && $runtime->count() === 0 && $admission->pendingCount() === 0) {
+    $runtime->pump(1.0);
+    $sawSession = $sawSession || $runtime->sessionCount() > 0;
+    if ($sawSession && $runtime->sessionCount() === 0 && $runtime->pendingCount() === 0) {
         break;
     }
 }
-if ($runtime->count() || !$sawSession || !$loaded || $admission->pendingCount()) {
+if ($runtime->sessionCount() || !$sawSession || !$loaded || $runtime->pendingCount()) {
     throw new RuntimeException('Routed session did not finish.');
 }
+$runtime->close();
 fclose($socket);
 echo "Dialled group launched runtime; receiver heard closing playback and session cleaned up.\n";

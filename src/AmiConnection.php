@@ -4,6 +4,10 @@ namespace AdvancedPaging;
 
 use RuntimeException;
 
+final class AmiActionException extends RuntimeException
+{
+}
+
 /**
  * Synchronous AMI action connection with event buffering.
  * The owning runtime must serialize access and drain events between requests.
@@ -30,7 +34,7 @@ final class AmiConnection implements AmiEventActions
         }
         if (isset($headers['ActionID'])) {
             $actionId = $headers['ActionID'];
-            if (!is_string($actionId) || !preg_match('/^ap-orig-[a-f0-9]{32}$/D', $actionId)) {
+            if (!is_string($actionId) || !preg_match('/^ap-(?:orig|list)-[a-f0-9]{32}$/D', $actionId)) {
                 throw new RuntimeException('Invalid AMI action identifier.');
             }
         } else {
@@ -65,7 +69,7 @@ final class AmiConnection implements AmiEventActions
                 $this->events[] = $frame;
             } elseif (($frame['ActionID'] ?? null) === $actionId && isset($frame['Response'])) {
                 if (strcasecmp($frame['Response'], 'Success') !== 0) {
-                    throw new RuntimeException('AMI action failed: ' . ($frame['Message'] ?? 'unknown error'));
+                    throw new AmiActionException('AMI action failed: ' . ($frame['Message'] ?? 'unknown error'));
                 }
                 return;
             } else {
