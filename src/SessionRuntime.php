@@ -48,7 +48,8 @@ final class SessionRuntime
         float $setupSeconds,
         bool $allowLocalForTests = false,
         ?GroupLock $reservation = null,
-        ?callable $sessionRecordingResolver = null
+        ?callable $sessionRecordingResolver = null,
+        array $callerIdentity = []
     ): ?string {
         if ($setupSeconds < 1 || $setupSeconds > 60 || !$targets) {
             throw new InvalidArgumentException('Invalid receiver setup.');
@@ -102,7 +103,8 @@ final class SessionRuntime
                     (int) ceil($setupSeconds * 1000),
                     $allowLocalForTests,
                     $targetAutoAnswer,
-                    is_array($target) && !empty($target['whisper'])
+                    is_array($target) && !empty($target['whisper']),
+                    $callerIdentity
                 );
             }
             return $sessionId;

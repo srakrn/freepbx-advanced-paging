@@ -30,12 +30,15 @@ $loader = new RuntimeSnapshot(
     },
     static function (string $id) use (&$recordings): string { return $recordings[$id] ?? ''; }
 );
-$snapshot = $loader->load(1, ['CallerChannel' => 'PJSIP/100-00000001']);
+$snapshot = $loader->load(1, [
+    'CallerChannel' => 'PJSIP/100-00000001', 'CallerIDNum' => '100', 'CallerIDName' => 'Caller One',
+]);
 $recordings['8'] = 'custom/changed';
 $groups[1]['audio_mode'] = 'simplex';
 if ($snapshot['mode'] !== 'duplex' || $snapshot['recording_files']['8'] !== 'custom/close'
     || $snapshot['targets'][0]['auto_answer']['ALERTINFO'] !== 'Intercom;volume=3'
     || empty($snapshot['targets'][0]['whisper']) || $snapshot['instruction_recording_id'] !== '7'
+    || $snapshot['caller_id'] !== ['number' => '100', 'name' => 'Caller One']
     || $snapshot['recording_files']['7'] !== 'custom/open&custom/part2') {
     throw new RuntimeException('Session snapshot was not stable.');
 }

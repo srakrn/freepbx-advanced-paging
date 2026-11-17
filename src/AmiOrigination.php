@@ -51,7 +51,7 @@ final class AmiOrigination
      * Only internal endpoints are accepted. Local channels are allowed solely
      * for isolated tests; callers must never pass untrusted dial strings.
      */
-    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false): void
+    public function start(string $target, string $conference, int $timeoutMs, bool $allowLocalForTests = false, array $autoAnswer = [], bool $whisper = false, array $callerId = []): void
     {
         if ($this->submitted || !preg_match('/^ap-[a-f0-9]{32}$/D', $conference)
             || $timeoutMs < 1000 || $timeoutMs > 60000) {
@@ -77,6 +77,19 @@ final class AmiOrigination
             'OtherChannelId' => $this->peerId,
             'Variable' => ['__AP_CONF=' . $conference, '__AP_ORIGINATION_ID=' . $this->id],
         ];
+        if ($callerId) {
+            $number = $callerId['number'] ?? '';
+            $name = $callerId['name'] ?? '';
+            if (!is_string($number) || !is_string($name) || strlen($number) > 80 || strlen($name) > 80
+                || ($number !== '' && !preg_match('/^[A-Za-z0-9 ._+\-]+$/D', $number))
+                || ($name !== '' && !preg_match('/^[A-Za-z0-9 ._+\-]+$/D', $name))) {
+                throw new InvalidArgumentException('Invalid paging caller ID.');
+            }
+            $value = $name !== '' ? $name . ' <' . $number . '>' : $number;
+            if ($value !== '') {
+                $headers['CallerID'] = $value;
+            }
+        }
         if ($whisper && !$testLocal) {
             if (!preg_match('/^PJSIP\/([A-Za-z0-9_.-]+)\//D', $target, $match)) {
                 throw new InvalidArgumentException('Whisper requires a registered PJSIP device.');

@@ -103,7 +103,7 @@ final class AdmissionCoordinator
                     $pending['group'], $pending['conference'], $pending['channel'], $uniqueId,
                     $snapshot['mode'], $snapshot['pre'], $snapshot['post'], $snapshot['targets'],
                     $snapshot['auto_answer'], $snapshot['setup_seconds'], $this->allowLocalForTests,
-                    $pending['lock'], $resolver
+                    $pending['lock'], $resolver, $snapshot['caller_id'] ?? []
                 );
                 if ($id === null) {
                     throw new RuntimeException('Reserved group became unavailable.');

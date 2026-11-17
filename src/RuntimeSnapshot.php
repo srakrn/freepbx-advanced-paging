@@ -106,11 +106,21 @@ final class RuntimeSnapshot
                 || !preg_match('/^[1-9][0-9]*$/D', (string) $instructionId))) {
             throw new RuntimeException('Invalid caller instruction recording.');
         }
+        $callerIdNum = $event['CallerIDNum'] ?? '';
+        $callerIdName = $event['CallerIDName'] ?? '';
+        foreach (['CallerIDNum' => $callerIdNum, 'CallerIDName' => $callerIdName] as $field => $value) {
+            if (!is_string($value) || strlen($value) > 80
+                || ($value !== '' && !preg_match('/^[A-Za-z0-9 ._+\-]+$/D', $value))) {
+                throw new RuntimeException('Invalid caller ID for paging receiver origination.');
+            }
+        }
+        $callerId = ['number' => $callerIdNum, 'name' => $callerIdName];
         return [
             'mode' => $group['audio_mode'], 'pre' => $ids[0], 'post' => $ids[1],
             'targets' => array_values($targets), 'auto_answer' => $autoAnswer,
             'instruction_recording_id' => $instructionId === null || $instructionId === '' ? null : (string) $instructionId,
             'busy_policy' => $busyPolicy,
+            'caller_id' => $callerId,
             'setup_seconds' => 5.0, 'recording_files' => $files,
         ];
     }

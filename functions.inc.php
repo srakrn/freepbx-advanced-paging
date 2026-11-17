@@ -113,7 +113,9 @@ function advancedpaging_generate_group_routes(array $groups)
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,wait_marked)', 'no'));
         $ext->add($context, $id, '', new ext_set('CONFBRIDGE(user,end_marked)', 'no'));
         $ext->add($context, $id, '', new ext_userevent('AdvancedPagingStart',
-            'GroupID:' . $id . ',Conference:${AP_CONF},CallerChannel:${CHANNEL},CallerUniqueid:${UNIQUEID}'));
+            'GroupID:' . $id . ',Conference:${AP_CONF},CallerChannel:${CHANNEL},CallerUniqueid:${UNIQUEID}'
+            . ',CallerIDNum:${FILTER(0-9A-Za-z+._-,${CALLERID(num)})}'
+            . ',CallerIDName:${FILTER(0-9A-Za-z ._-,${CALLERID(name)})}'));
         // Do not answer or join without an explicit runtime admission.
         // This is a setup watchdog, not a limit on an active session.
         $ext->add($context, $id, 'admission', new ext_gotoif('$["${AP_ADMITTED}" = "1"]', 'admitted'));

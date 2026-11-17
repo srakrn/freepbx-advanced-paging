@@ -20,7 +20,7 @@ a production system without a maintenance window and current FreePBX backup.
    `/var/www/html/admin/modules/advancedpaging`, then set ownership:
 
    ```sh
-   tar -xzf advancedpaging-17.0.0alpha4.tar.gz -C /var/www/html/admin/modules
+   tar -xzf advancedpaging-17.0.0alpha5.tar.gz -C /var/www/html/admin/modules
    chown -R asterisk:asterisk /var/www/html/admin/modules/advancedpaging
    ```
 
