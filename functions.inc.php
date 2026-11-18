@@ -124,7 +124,7 @@ function advancedpaging_generate_group_routes(array $groups, bool $dropSilence =
         $ext->add($context, $id, 'admission', new ext_gotoif('$["${AP_ADMITTED}" = "1"]', 'admitted'));
         $ext->add($context, $id, '', new ext_wait('0.1'));
         $ext->add($context, $id, '', new ext_set('AP_ADMISSION_TRIES', '$[${AP_ADMISSION_TRIES} + 1]'));
-        $ext->add($context, $id, '', new ext_gotoif('$[${AP_ADMISSION_TRIES} < 30]', 'admission'));
+        $ext->add($context, $id, '', new ext_gotoif('$[${AP_ADMISSION_TRIES} < 120]', 'admission'));
         $ext->add($context, $id, '', new ext_hangup('41'));
         $ext->add($context, $id, 'admitted', new ext_answer());
         $ext->add($context, $id, '', new ext_confbridge('${AP_CONF}'));

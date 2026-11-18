@@ -37,7 +37,8 @@ final class RuntimeBootstrap
         string $lockDirectory,
         callable $groupLoader,
         callable $recordingResolver,
-        bool $allowLocalForTests = false
+        bool $allowLocalForTests = false,
+        ?callable $log = null
     ): self {
         $lock = GroupLock::tryAcquireRuntime($lockDirectory);
         if ($lock === null) {
@@ -47,7 +48,7 @@ final class RuntimeBootstrap
             $recovery = new CrashRecovery($ami, $lock);
             $recovery->recover();
             $runtime = new SessionRuntime($ami, $lockDirectory, $recordingResolver);
-            $admission = new AdmissionCoordinator($ami, $runtime, $lockDirectory, $groupLoader, $allowLocalForTests);
+            $admission = new AdmissionCoordinator($ami, $runtime, $lockDirectory, $groupLoader, $allowLocalForTests, $log);
             return new self($lock, $recovery, $runtime, $admission);
         } catch (Throwable $error) {
             $lock->release();

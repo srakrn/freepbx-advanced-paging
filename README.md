@@ -1,6 +1,6 @@
 # Advanced Paging for FreePBX 17
 
-**Current release: 17.0.0** — the first stable, unsigned release for FreePBX
+**Current release: 17.0.1** — the first maintenance release for FreePBX
 17 and Asterisk 22. It is not Sangoma-certified. Review the known platform and
 handset limitations below before using it.
 
@@ -20,10 +20,12 @@ handset limitations below before using it.
 - Preserve caller ID on receiver calls.
 - Serialize call events, prevent simultaneous calls to the same group, and
   reconcile module-owned channels after runtime restarts.
+- Log sanitized admission stages and use a systemd watchdog to recover a
+  runtime that stops making event-loop progress.
 - Back up and restore group configuration without including runtime secrets.
 
 See the [installation and acceptance guide](docs/INSTALL.md) and the
-[17.0.0 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0).
+[17.0.1 release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.1).
 
 ## Compatibility and limitations
 
@@ -45,7 +47,7 @@ Download and verify the release archive and follow
 [`docs/INSTALL.md`](docs/INSTALL.md):
 
 ```sh
-VERSION=17.0.0
+VERSION=17.0.1
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz"
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz.sha256"
 sha256sum -c "advancedpaging-${VERSION}.tar.gz.sha256"

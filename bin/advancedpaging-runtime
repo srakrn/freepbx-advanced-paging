@@ -13,6 +13,23 @@ foreach (['Session', 'SessionController', 'AsteriskEffects', 'AmiConnection', 'A
 use AdvancedPaging\RuntimeConfig;
 use AdvancedPaging\RuntimeService;
 
+function advancedpaging_notify(string $state): void
+{
+    $socketPath = getenv('NOTIFY_SOCKET');
+    if (!is_string($socketPath) || $socketPath === '') {
+        return;
+    }
+    if ($socketPath[0] === '@') {
+        $socketPath = "\0" . substr($socketPath, 1);
+    }
+    $socket = @socket_create(AF_UNIX, SOCK_DGRAM, 0);
+    if ($socket === false) {
+        return;
+    }
+    @socket_sendto($socket, $state, strlen($state), 0, $socketPath);
+    socket_close($socket);
+}
+
 try {
     $bootstrap_settings['freepbx_auth'] = false;
     require_once '/etc/freepbx.conf';
@@ -28,7 +45,12 @@ try {
             throw new RuntimeException('Session recording snapshot is required.');
         },
         static function (string $message): void { error_log($message); },
-        static function (): void { error_log('Advanced Paging runtime ready.'); }
+        static function (): void {
+            error_log('Advanced Paging runtime ready.');
+            advancedpaging_notify("READY=1\nWATCHDOG=1");
+        },
+        false,
+        static function (): void { advancedpaging_notify('WATCHDOG=1'); }
     );
     $service->run();
 } catch (Throwable $error) {

@@ -543,7 +543,9 @@ def main():
                 if time.monotonic() > deadline:
                     raise RuntimeError("Unadmitted watchdog test channel did not appear.")
                 time.sleep(0.05)
-            deadline = time.monotonic() + 6
+            # 120 iterations of the 100ms dialplan wait allow 12 seconds for
+            # runtime admission before the fail-closed hangup.
+            deadline = time.monotonic() + 16
             while "Local/8555@ext-advancedpaging" in cli("core show channels concise"):
                 if time.monotonic() > deadline:
                     raise RuntimeError("Unadmitted caller survived the admission watchdog.")
@@ -571,7 +573,7 @@ def main():
                     if time.monotonic() > deadline:
                         raise RuntimeError("Second routed caller did not appear.")
                     time.sleep(0.05)
-                deadline = time.monotonic() + 6
+                deadline = time.monotonic() + 16
                 while cli("core show channels concise").count("Local/8555@ext-advancedpaging") > 2:
                     if time.monotonic() > deadline:
                         raise RuntimeError("Busy routed caller was not rejected by the watchdog.")

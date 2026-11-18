@@ -27,7 +27,8 @@ if (!isset($ext->entries['ext-advancedpaging']['8555'])
 }
 $start = array_column($ext->entries['app-advancedpaging']['1'], 1);
 $dialplan = implode("\n", $start);
-foreach (['UUID()', 'AdvancedPagingStart', 'AP_ADMITTED', 'AP_ADMISSION_TRIES', 'Hangup(41)', 'ConfBridge(${AP_CONF}'] as $expected) {
+foreach (['UUID()', 'AdvancedPagingStart', 'AP_ADMITTED', 'AP_ADMISSION_TRIES',
+    '< 120]?admission', 'Hangup(41)', 'ConfBridge(${AP_CONF}'] as $expected) {
     if (strpos($dialplan, $expected) === false) {
         throw new RuntimeException('Admission-safe route missing ' . $expected . ': ' . $dialplan);
     }

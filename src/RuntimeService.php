@@ -17,6 +17,7 @@ final class RuntimeService
     private $recordingResolver;
     private $log;
     private $ready;
+    private $heartbeat;
     private bool $allowLocalForTests;
     private bool $stopping = false;
 
@@ -27,7 +28,8 @@ final class RuntimeService
         callable $recordingResolver,
         callable $log,
         callable $ready,
-        bool $allowLocalForTests = false
+        bool $allowLocalForTests = false,
+        ?callable $heartbeat = null
     ) {
         $this->connect = $connect;
         $this->lockDirectory = $lockDirectory;
@@ -35,6 +37,7 @@ final class RuntimeService
         $this->recordingResolver = $recordingResolver;
         $this->log = $log;
         $this->ready = $ready;
+        $this->heartbeat = $heartbeat ?? static function (): void {};
         $this->allowLocalForTests = $allowLocalForTests;
     }
 
@@ -62,12 +65,13 @@ final class RuntimeService
                 }
                 $bootstrap = RuntimeBootstrap::start(
                     $ami, $this->lockDirectory, $this->groupLoader,
-                    $this->recordingResolver, $this->allowLocalForTests
+                    $this->recordingResolver, $this->allowLocalForTests, $this->log
                 );
                 $failures = 0;
                 ($this->ready)();
                 while (!$this->stopping) {
                     $bootstrap->pump(0.5);
+                    ($this->heartbeat)();
                 }
                 $bootstrap->close();
             } catch (Throwable $error) {

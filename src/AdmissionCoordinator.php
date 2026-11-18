@@ -18,6 +18,7 @@ final class AdmissionCoordinator
     private SessionRuntime $runtime;
     private string $lockDirectory;
     private $groupLoader;
+    private $log;
     private bool $allowLocalForTests;
     /** @var array<string, array> */
     private array $pending = [];
@@ -27,13 +28,15 @@ final class AdmissionCoordinator
         SessionRuntime $runtime,
         string $lockDirectory,
         callable $groupLoader,
-        bool $allowLocalForTests = false
+        bool $allowLocalForTests = false,
+        ?callable $log = null
     ) {
         $this->ami = $ami;
         $this->runtime = $runtime;
         $this->lockDirectory = $lockDirectory;
         $this->groupLoader = $groupLoader;
         $this->allowLocalForTests = $allowLocalForTests;
+        $this->log = $log ?? static function (string $message): void {};
     }
 
     public function pump(float $timeout): void
@@ -124,6 +127,8 @@ final class AdmissionCoordinator
 
     private function requestAdmission(array $event): void
     {
+        $started = hrtime(true);
+        $stage = 'validation';
         $group = $event['GroupID'] ?? '';
         $conference = $event['Conference'] ?? '';
         $channel = $event['CallerChannel'] ?? '';
@@ -138,15 +143,22 @@ final class AdmissionCoordinator
             || ($event['Context'] ?? '') !== 'app-advancedpaging'
             || ($event['Exten'] ?? '') !== $group
             || isset($this->pending[$uniqueId])) {
+            ($this->log)('Advanced Paging admission rejected at validation.');
             return;
         }
+        ($this->log)('Advanced Paging admission event received.');
         try {
+            $stage = 'snapshot';
             $snapshot = ($this->groupLoader)((int) $group, $event);
             if (!is_array($snapshot) || empty($snapshot['targets'])) {
+                ($this->log)('Advanced Paging admission rejected at snapshot: no eligible targets.');
                 return;
             }
+            ($this->log)('Advanced Paging admission snapshot resolved.');
+            $stage = 'group-lock';
             $lock = GroupLock::tryAcquire($this->lockDirectory, (int) $group);
             if ($lock === null) {
+                ($this->log)('Advanced Paging admission rejected at group-lock: group busy.');
                 return; // Dialplan watchdog rejects the caller.
             }
             $this->pending[$uniqueId] = [
@@ -154,13 +166,25 @@ final class AdmissionCoordinator
                 'lock' => $lock, 'snapshot' => $snapshot,
                 'deadline' => hrtime(true) / 1000000000 + 5.0, 'hangup_requested' => false,
             ];
+            $stage = 'setvar';
+            $setvarStarted = hrtime(true);
             $this->ami->request([
                 'Action' => 'Setvar', 'Channel' => $channel,
                 'Variable' => 'AP_ADMITTED', 'Value' => '1',
             ]);
+            ($this->log)('Advanced Paging admission Setvar acknowledged in '
+                . (int) ((hrtime(true) - $setvarStarted) / 1000000) . ' ms.');
+            ($this->log)('Advanced Paging admission completed in '
+                . (int) ((hrtime(true) - $started) / 1000000) . ' ms.');
         } catch (Throwable $error) {
-            // No acknowledgement is sent on invalid configuration or failure.
-            // A possibly acknowledged caller remains tracked until hangup.
+            ($this->log)('Advanced Paging admission failed at ' . $stage . ' ('
+                . get_class($error) . ') after '
+                . (int) ((hrtime(true) - $started) / 1000000) . ' ms.');
+            // A failed AMI action means admission state is uncertain. Reconnect
+            // and reconcile rather than leave a connected but non-progressing loop.
+            if ($stage === 'setvar') {
+                throw $error;
+            }
         }
     }
 }

@@ -1,12 +1,13 @@
 <module>
     <rawname>advancedpaging</rawname>
     <name>Advanced Paging</name>
-    <version>17.0.0</version>
+    <version>17.0.1</version>
     <publisher>Advanced Paging contributors</publisher>
     <license>GPLv3+</license>
     <category>Applications</category>
     <description>Configurable paging groups with lifecycle announcements and simplex or duplex audio.</description>
     <changelog>
+        *17.0.1* Add privacy-safe admission diagnostics and systemd watchdog recovery.
         *17.0.0* First stable release of Advanced Paging for FreePBX 17.
         *17.0.0alpha6* Add the global Drop Silence option for paging conferences.
         *17.0.0alpha5* Preserve the initiating caller ID on receiver origination.

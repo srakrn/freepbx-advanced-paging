@@ -4,7 +4,9 @@ After=freepbx.service
 Requires=freepbx.service
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
 User=asterisk
 Group=asterisk
 RuntimeDirectory=advancedpaging

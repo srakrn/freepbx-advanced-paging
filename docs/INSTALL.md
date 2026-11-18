@@ -1,6 +1,6 @@
 # Advanced Paging installation guide
 
-Advanced Paging **17.0.0** is the first stable, unsigned release for FreePBX 17
+Advanced Paging **17.0.1** is a maintenance release for FreePBX 17
 and Asterisk 22. It is not a Sangoma-certified module. Review these
 instructions, the release notes, and your local change-control requirements
 before installing it.
@@ -20,10 +20,10 @@ auto-answer and speaker-volume headers varies by vendor and firmware.
 ## Download and verify
 
 Download the archive and checksum from the
-[17.0.0 GitHub release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.0):
+[17.0.1 GitHub release](https://github.com/srakrn/freepbx-advanced-paging/releases/tag/v17.0.1):
 
 ```sh
-VERSION=17.0.0
+VERSION=17.0.1
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz"
 curl -fLO "https://github.com/srakrn/freepbx-advanced-paging/releases/download/v${VERSION}/advancedpaging-${VERSION}.tar.gz.sha256"
 sha256sum -c "advancedpaging-${VERSION}.tar.gz.sha256"
